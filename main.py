@@ -16,6 +16,12 @@ from discord import app_commands
 from urllib.parse import quote_plus
 import vobject
 from dotenv import load_dotenv
+import logging
+import traceback
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file for local development
 load_dotenv()
@@ -225,16 +231,20 @@ def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str
         
         contact_id = data.get("contact", {}).get("id")
         if contact_id:
+            logger.info(f"Successfully created GHL contact with ID: {contact_id}")
             return contact_id
         else:
+            logger.error(f"GHL contact creation succeeded but no ID was returned. Response: {data}")
             return None
             
     except requests.exceptions.RequestException as e:
-        if hasattr(e, 'response') and e.response:
+        error_details = "No response body"
+        if hasattr(e, 'response') and e.response is not None:
             try:
                 error_details = e.response.json()
-            except:
-                pass
+            except json.JSONDecodeError:
+                error_details = e.response.text
+        logger.error(f"Failed to create GHL contact. Error: {e}, Details: {error_details}")
         return None
 
 def get_ghl_contact_id(phone: str) -> str | None:
@@ -609,71 +619,84 @@ async def sync_service_to_dashboard(contact_id: str, service_apt_num: int, befor
 
 # --- Discord Bot Functions ---
 async def create_customer_channel_and_post(customer_data: dict):
-    # Find the guild (server) - assuming the bot is in only one server
-    guild = client.guilds[0]
-    
-    # Find the category
-    category = discord.utils.get(guild.categories, name=DISCORD_CATEGORY_NAME)
-    if not category:
-        return
-
-    # Format channel name: #mm-dd-firstname
-    first_name = customer_data["personal_info"]["first_name"].lower()
-    today = datetime.now().strftime("%m-%d")
-    channel_name = f"{today}-{first_name}"
-
-    # Create the new channel
-    new_channel = await guild.create_text_channel(channel_name, category=category)
-
-    # --- IMPORTANT: Save the channel ID to the customer's file ---
-    customer_data["discord_channel_id"] = new_channel.id
-    customer_file_path = os.path.join(CUSTOMER_DATA_DIR, customer_data["client_id"], "customer_data.json")
     try:
-        with open(customer_file_path, "w") as f:
-            json.dump(customer_data, f, indent=4)
-    except IOError as e:
-        pass
-    # -------------------------------------------------------------
+        # Find the guild (server) - assuming the bot is in only one server
+        if not client.guilds:
+            logger.error("Discord client is not connected to any guilds.")
+            return
 
-    # Prepare data for the message
-    p_info = customer_data["personal_info"]
-    s_info = customer_data["service_history"][0]
-    
-    full_name = f"{p_info['first_name']} {p_info['last_name']}"
-    phone_number = p_info['phone_number']
-    full_address = p_info['address']
-    
-    # Generate Apple Maps link
-    apple_maps_link = f"https://maps.apple.com/?q={quote_plus(full_address)}"
+        guild = client.guilds[0]
+        
+        # Find the category
+        category = discord.utils.get(guild.categories, name=DISCORD_CATEGORY_NAME)
+        if not category:
+            logger.error(f"Discord category '{DISCORD_CATEGORY_NAME}' not found.")
+            return
 
-    price_per_panel = s_info['service_details'].split(' at $')[1].split(' per panel')[0]
-    num_panels = s_info['service_details'].split(' panels')[0]
-    total_quoted = s_info['quote_amount']
+        # Format channel name: #mm-dd-firstname
+        first_name = customer_data["personal_info"]["first_name"].lower()
+        today = datetime.now().strftime("%m-%d")
+        channel_name = f"{today}-{first_name}"
 
-    # Generate the vCard and get its URL
-    vcard_url = create_vcard_file(customer_data["client_id"], customer_data)
+        # Create the new channel
+        logger.info(f"Creating Discord channel: {channel_name}")
+        new_channel = await guild.create_text_channel(channel_name, category=category)
+        logger.info(f"Successfully created Discord channel with ID: {new_channel.id}")
 
-    # --- Message 1: Name, Phone, and Address Label ---
-    message1_content = (
-        f"**Name**: {full_name}\n"
-        f"**Phone Number**: {phone_number}\n"
-        f"**Address**:"
-    )
-    await new_channel.send(message1_content)
+        # --- IMPORTANT: Save the channel ID to the customer's file ---
+        customer_data["discord_channel_id"] = new_channel.id
+        customer_file_path = os.path.join(CUSTOMER_DATA_DIR, customer_data["client_id"], "customer_data.json")
+        try:
+            with open(customer_file_path, "w") as f:
+                json.dump(customer_data, f, indent=4)
+        except IOError as e:
+            logger.error(f"Failed to save discord_channel_id to customer file. Error: {e}")
+            # Continue anyway, but log the error
 
-    # --- Message 2: Just the Address ---
-    await new_channel.send(full_address)
+        # Prepare data for the message
+        p_info = customer_data["personal_info"]
+        s_info = customer_data["service_history"][0]
+        
+        full_name = f"{p_info['first_name']} {p_info['last_name']}"
+        phone_number = p_info['phone_number']
+        full_address = p_info['address']
+        
+        # Generate Apple Maps link
+        apple_maps_link = f"https://maps.apple.com/?q={quote_plus(full_address)}"
 
-    # --- Message 3: Quote, Contacts Link ---
-    message3_content = (
-        f"**Price Per Panel**: ${price_per_panel} | **# of Panels**: {num_panels}\n"
-        f"**Quoted**: ${total_quoted:.2f}\n\n"
-        f"**Add to Contacts**: [Click to Download]({vcard_url})"
-    )
-    await new_channel.send(message3_content)
+        price_per_panel = s_info['service_details'].split(' at $')[1].split(' per panel')[0]
+        num_panels = s_info['service_details'].split(' panels')[0]
+        total_quoted = s_info['quote_amount']
 
-    # --- Message 4: Just the Maps Link ---
-    await new_channel.send(f"**Apple Maps Link**: {apple_maps_link}")
+        # Generate the vCard and get its URL
+        vcard_url = create_vcard_file(customer_data["client_id"], customer_data)
+
+        # --- Message 1: Name, Phone, and Address Label ---
+        message1_content = (
+            f"**Name**: {full_name}\\n"
+            f"**Phone Number**: {phone_number}\\n"
+            f"**Address**:"
+        )
+        await new_channel.send(message1_content)
+
+        # --- Message 2: Just the Address ---
+        await new_channel.send(full_address)
+
+        # --- Message 3: Quote, Contacts Link ---
+        message3_content = (
+            f"**Price Per Panel**: ${price_per_panel} | **# of Panels**: {num_panels}\\n"
+            f"**Quoted**: ${total_quoted:.2f}\\n\\n"
+            f"**Add to Contacts**: [Click to Download]({vcard_url})"
+        )
+        await new_channel.send(message3_content)
+
+        # --- Message 4: Just the Maps Link ---
+        await new_channel.send(f"**Apple Maps Link**: {apple_maps_link}")
+        logger.info(f"Successfully posted details to channel #{channel_name}")
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in create_customer_channel_and_post: {e}")
+        logger.error(traceback.format_exc())
 
 # --- FastAPI Events ---
 @app.on_event("startup")
@@ -883,85 +906,101 @@ async def create_customer(payload: VercelWebhookPayload):
     """
     Webhook to create a GHL contact, then create a customer folder using the GHL ID.
     """
-    # Extract the actual form data from the nested object
-    form_data = payload.formData
+    logger.info(f"Received new customer payload: {payload.formData.model_dump_json()}")
+    try:
+        # Extract the actual form data from the nested object
+        form_data = payload.formData
 
-    # Create the contact in GHL first
-    contact_id = create_ghl_contact(
-        first_name=form_data.firstName,
-        last_name=form_data.lastInitial,
-        phone=form_data.phone,
-        address=form_data.streetAddress,
-        city=form_data.city
-    )
-
-    if not contact_id:
-        raise HTTPException(
-            status_code=500, 
-            detail="Failed to create contact in GoHighLevel. Folder not created."
+        # Create the contact in GHL first
+        logger.info("Attempting to create GHL contact...")
+        contact_id = create_ghl_contact(
+            first_name=form_data.firstName,
+            last_name=form_data.lastInitial,
+            phone=form_data.phone,
+            address=form_data.streetAddress,
+            city=form_data.city
         )
 
-    # The GHL contact ID is now the primary identifier and folder name.
-    customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
+        if not contact_id:
+            logger.error("create_ghl_contact returned None. Aborting.")
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to create contact in GoHighLevel. Contact ID was not returned."
+            )
 
-    try:
-        # Use exist_ok=True in case we are updating an existing customer's service.
-        os.makedirs(customer_dir, exist_ok=True)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create customer directory: {e}")
-    
-    # Use current time for service date and add a follow-up date
-    service_date = datetime.utcnow()
-    follow_up_date = service_date + timedelta(days=90)
-    
-    # --- Map new form data to our customer data structure ---
-    full_address = f"{form_data.streetAddress}, {form_data.city}"
-    service_details_text = f"{form_data.panelCount} panels at ${form_data.pricePerPanel} per panel."
-    
-    # Safely convert totalAmount to float, defaulting to 0.0 if empty or invalid.
-    try:
-        quote_amount = float(form_data.totalAmount)
-    except (ValueError, TypeError):
-        quote_amount = 0.0
+        # The GHL contact ID is now the primary identifier and folder name.
+        customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
 
-    customer_data = {
-        "client_id": contact_id,  # GHL Contact ID is the main ID
-        "personal_info": {
-            "first_name": form_data.firstName,
-            "last_name": form_data.lastInitial, # Map lastInitial to last_name
-            "email": "",  # Email is missing in the new payload, saving as empty.
-            "phone_number": form_data.phone,
-            "address": full_address, # Use combined address
-        },
-        "service_history": [
-            {
-                "service_date": service_date.isoformat(),
-                "quote_amount": quote_amount,
-                "service_details": service_details_text,
-                "follow_up_date": follow_up_date.isoformat(),
-            }
-        ],
-        "membership_info": {
-            "quoted_price": 0.0,
-            "plan_basis_months": 0,
-            "invite_sent_date": "",
-            "status": "not_invited"  # not_invited, invited, active, cancelled
-        },
-        "stripe_customer_id": "",  # Initialize as empty, will be set later via /stripeCustomer endpoint
-        "created_at": datetime.utcnow().isoformat(),
-    }
+        try:
+            logger.info(f"Creating customer directory: {customer_dir}")
+            # Use exist_ok=True in case we are updating an existing customer's service.
+            os.makedirs(customer_dir, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Failed to create customer directory: {customer_dir}. Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to create customer directory: {e}")
+        
+        # Use current time for service date and add a follow-up date
+        service_date = datetime.utcnow()
+        follow_up_date = service_date + timedelta(days=90)
+        
+        # --- Map new form data to our customer data structure ---
+        full_address = f"{form_data.streetAddress}, {form_data.city}"
+        service_details_text = f"{form_data.panelCount} panels at ${form_data.pricePerPanel} per panel."
+        
+        # Safely convert totalAmount to float, defaulting to 0.0 if empty or invalid.
+        try:
+            quote_amount = float(form_data.totalAmount)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert totalAmount '{form_data.totalAmount}' to float. Defaulting to 0.0")
+            quote_amount = 0.0
 
-    file_path = os.path.join(customer_dir, "customer_data.json")
-    try:
-        with open(file_path, "w") as f:
-            json.dump(customer_data, f, indent=4)
-    except IOError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write customer data: {e}")
+        customer_data = {
+            "client_id": contact_id,  # GHL Contact ID is the main ID
+            "personal_info": {
+                "first_name": form_data.firstName,
+                "last_name": form_data.lastInitial, # Map lastInitial to last_name
+                "email": "",  # Email is missing in the new payload, saving as empty.
+                "phone_number": form_data.phone,
+                "address": full_address, # Use combined address
+            },
+            "service_history": [
+                {
+                    "service_date": service_date.isoformat(),
+                    "quote_amount": quote_amount,
+                    "service_details": service_details_text,
+                    "follow_up_date": follow_up_date.isoformat(),
+                }
+            ],
+            "membership_info": {
+                "quoted_price": 0.0,
+                "plan_basis_months": 0,
+                "invite_sent_date": "",
+                "status": "not_invited"  # not_invited, invited, active, cancelled
+            },
+            "stripe_customer_id": "",  # Initialize as empty, will be set later via /stripeCustomer endpoint
+            "created_at": datetime.utcnow().isoformat(),
+        }
 
-    # Trigger the Discord bot to create the channel and post the message
-    await create_customer_channel_and_post(customer_data)
+        file_path = os.path.join(customer_dir, "customer_data.json")
+        try:
+            logger.info(f"Writing customer data to {file_path}")
+            with open(file_path, "w") as f:
+                json.dump(customer_data, f, indent=4)
+        except IOError as e:
+            logger.error(f"Failed to write customer data to {file_path}. Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to write customer data: {e}")
 
-    return {"message": "Customer folder created/updated successfully", "contact_id": contact_id}
+        # Trigger the Discord bot to create the channel and post the message
+        logger.info("Triggering Discord channel creation...")
+        await create_customer_channel_and_post(customer_data)
+        logger.info("Successfully completed customer creation process.")
+
+        return {"message": "Customer folder created/updated successfully", "contact_id": contact_id}
+
+    except Exception as e:
+        logger.error(f"An unhandled exception occurred in /customer/create endpoint: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="An internal server error occurred.")
 
 @app.post("/contactUpdate")
 async def contact_update(contactId: str, payload: ContactUpdatePayload):
