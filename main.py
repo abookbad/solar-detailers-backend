@@ -15,20 +15,28 @@ import discord
 from discord import app_commands
 from urllib.parse import quote_plus
 import vobject
+from dotenv import load_dotenv
+
+# Load environment variables from .env file for local development
+load_dotenv()
 
 # --- Configuration ---
 CUSTOMER_DATA_DIR = "customer_data"
-GHL_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6ImNXRXd6NkpCRkhQWTBMZUMzcnkzIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQ5NTI3NTY5MjI0LCJzdWIiOiJGY1BSM0w3NFVrdXBWMklhTkljdSJ9.v8CmTHqK2WUEO4QrZm9CB0N1A3cvwEMDR1nAEiSssuA"
+GHL_API_TOKEN = os.getenv("GHL_API_TOKEN")
 GHL_API_BASE_URL = "https://rest.gohighlevel.com/v1"
 GHL_SMS_FROM_NUMBER = "+19094049641"
-GHL_CONVERSATIONS_TOKEN = "pit-474d2213-cd7e-4e4d-8c2e-e49fe675afeb"
+GHL_CONVERSATIONS_TOKEN = os.getenv("GHL_CONVERSATIONS_TOKEN")
 GHL_LOCATION_ID = "cWEwz6JBFHPY0LeC3ry3"
-BOT_TOKEN = "MTM4MzcwMDcyOTEwMDc2NzIzMg.GoLjY_.Sz9N-gVI2gSw6weRktsI6Ht0ljm9oDUFzcdbRw"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 DISCORD_CATEGORY_NAME = "Solar Detail"
 
 # Dashboard sync configuration
-DASHBOARD_BASE_URL = "http://your-dashboard-domain.com"  # Replace with actual dashboard URL
-SERVER_BASE_URL = "http://windows.agencydevworks.ai:8000"  # Your server's public URL
+DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL", "http://your-dashboard-domain.com")
+SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://windows.agencydevworks.ai:8000")
+
+# --- Token Validation ---
+if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN]):
+    raise ValueError("One or more required environment variables are missing. Please check your .env file or server environment.")
 
 app = FastAPI()
 
