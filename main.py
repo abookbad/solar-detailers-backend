@@ -1317,6 +1317,22 @@ async def book_new_appointment(booking: AppointmentBooking):
 def read_root():
     return {"message": "Welcome to the Solar Detailing Customer API"}
 
+@app.get("/debug-token")
+async def debug_token():
+    """
+    A temporary and secure endpoint to verify the GHL token being used by the application.
+    """
+    token = os.getenv("GHL_CONVERSATIONS_TOKEN")
+    if token:
+        # Show the first 8 and last 4 characters for verification, keeping the full token secret.
+        token_preview = f"{token[:8]}...{token[-4:]}"
+        return {
+            "message": "This is a preview of the GHL Conversations Token the application is currently using.",
+            "token_preview": token_preview
+        }
+    else:
+        return {"error": "GHL_CONVERSATIONS_TOKEN is not set in the server's environment."}
+
 @app.get("/api/images/{contact_id}/service_apt{service_num}")
 async def get_service_images(contact_id: str, service_num: int):
     """
