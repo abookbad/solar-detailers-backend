@@ -6,8 +6,8 @@ module.exports = {
       'main:app',
       '--host', '0.0.0.0',
       '--port', '8000',
-      '--ssl-keyfile=/etc/letsencrypt/live/ssh.agency/privkey.pem',
-      '--ssl-certfile=/etc/letsencrypt/live/ssh.agency/fullchain.pem'
+      '--ssl-keyfile=/etc/letsencrypt/live/ssh.agencydevworks.ai/privkey.pem',
+      '--ssl-certfile=/etc/letsencrypt/live/ssh.agencydevworks.ai/fullchain.pem'
     ],
     interpreter: 'python3',
     env: {
@@ -26,7 +26,7 @@ module.exports = {
       GHL_CONVERSATIONS_TOKEN: process.env.GHL_CONVERSATIONS_TOKEN,
       BOT_TOKEN: process.env.BOT_TOKEN,
       DASHBOARD_BASE_URL: 'http://your-production-dashboard-url.com',
-      SERVER_BASE_URL: 'http://ssh.agencydevworks.ai:8000',
+      SERVER_BASE_URL: 'https://ssh.agencydevworks.ai',
       FRONTEND_URL: 'https://your-production-frontend-url.com'
     }
   }]
