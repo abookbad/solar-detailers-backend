@@ -2,7 +2,13 @@ module.exports = {
   apps: [{
     name: 'solar-detailers-backend',
     script: 'uvicorn',
-    args: 'main:app --host 0.0.0.0 --port 8000',
+    args: [
+      'main:app',
+      '--host', '0.0.0.0',
+      '--port', '8000',
+      '--ssl-keyfile=/etc/letsencrypt/live/ssh.agency/privkey.pem',
+      '--ssl-certfile=/etc/letsencrypt/live/ssh.agency/fullchain.pem'
+    ],
     interpreter: 'python3',
     env: {
       // These are variables for all environments
