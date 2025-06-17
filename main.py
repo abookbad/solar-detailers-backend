@@ -202,17 +202,8 @@ class ConfirmUpdateView(discord.ui.View):
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
     """Creates a contact in GHL and returns the contact ID."""
     
-    # --- Start of Debugging ---
-    if GHL_CONVERSATIONS_TOKEN:
-        token_preview = f"{GHL_CONVERSATIONS_TOKEN[:8]}...{GHL_CONVERSATIONS_TOKEN[-4:]}"
-        logger.info(f"Using GHL Conversations Token (Preview): {token_preview}")
-    else:
-        logger.error("GHL_CONVERSATIONS_TOKEN is not set or is empty!")
-        return None
-    # --- End of Debugging ---
-
     # Clean and format the phone number
-    cleaned_phone = re.sub(r'\D', '', phone)
+    cleaned_phone = re.sub(r'\\D', '', phone)
     if len(cleaned_phone) == 10 and not cleaned_phone.startswith('1'):
         cleaned_phone = '1' + cleaned_phone
     formatted_phone = f"+{cleaned_phone}"
