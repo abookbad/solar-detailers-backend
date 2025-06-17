@@ -27,7 +27,7 @@ module.exports = {
       BOT_TOKEN: process.env.BOT_TOKEN,
       DASHBOARD_BASE_URL: 'http://your-production-dashboard-url.com',
       SERVER_BASE_URL: 'https://ssh.agencydevworks.ai',
-      FRONTEND_URL: 'https://your-production-frontend-url.com'
+      FRONTEND_URL: 'https://solardetailers.com'
     }
   }]
 }; 
