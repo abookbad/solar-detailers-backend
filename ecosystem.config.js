@@ -1,8 +1,9 @@
 module.exports = {
   apps: [{
     name: 'solar-detailers-backend',
-    script: '/root/solar-detailers-backend/venv/bin/uvicorn',
+    script: 'uvicorn',
     args: 'main:app --host 0.0.0.0 --port 8000',
+    interpreter: 'python3',
     env: {
       // These are variables for all environments
       GHL_LOCATION_ID: 'cWEwz6JBFHPY0LeC3ry3',
