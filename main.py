@@ -58,6 +58,7 @@ app.mount("/images", StaticFiles(directory=CUSTOMER_DATA_DIR), name="images")
 origins = [
     "http://localhost:3000",
     "http://localhost",
+    "https://solardetailers.com",
     # You might want to add your Vercel deployment URL here as well
     # "https://your-vercel-app-name.vercel.app", 
 ]
