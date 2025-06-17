@@ -25,8 +25,8 @@ module.exports = {
       GHL_API_TOKEN: process.env.GHL_API_TOKEN,
       GHL_CONVERSATIONS_TOKEN: process.env.GHL_CONVERSATIONS_TOKEN,
       BOT_TOKEN: process.env.BOT_TOKEN,
-      DASHBOARD_BASE_URL: 'http://your-production-dashboard-url.com',
-      SERVER_BASE_URL: 'https://ssh.agencydevworks.ai',
+      DASHBOARD_BASE_URL: 'https://solardetailers.com/dashboard',
+      SERVER_BASE_URL: 'https://ssh.agencydevworks.ai:8000',
       FRONTEND_URL: 'https://solardetailers.com'
     }
   }]
