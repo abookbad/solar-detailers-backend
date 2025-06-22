@@ -368,8 +368,7 @@ def create_vcard_file(contact_id: str, customer_data: dict) -> str:
         f.write(v.serialize())
 
     # Return the public URL for the file
-    # NOTE: This assumes your server is accessible at http://windows.agencydevworks.ai:8000
-    return f"http://windows.agencydevworks.ai:8000/static/{contact_id}.vcf"
+    return f"{SERVER_BASE_URL}/static/{contact_id}.vcf"
 
 async def send_ghl_sms_invite(contact_id: str, first_name: str, to_number: str):
     """Sends the membership profile SMS invite via GHL."""
