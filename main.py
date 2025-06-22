@@ -674,8 +674,8 @@ async def create_customer_channel_and_post(customer_data: dict):
 
         # --- Message 1: Name, Phone, and Address Label ---
         message1_content = (
-            f"**Name**: {full_name}\\n"
-            f"**Phone Number**: {phone_number}\\n"
+            f"**Name**: {full_name}\n"
+            f"**Phone Number**: {phone_number}\n"
             f"**Address**:"
         )
         await new_channel.send(message1_content)
@@ -685,8 +685,8 @@ async def create_customer_channel_and_post(customer_data: dict):
 
         # --- Message 3: Quote, Contacts Link ---
         message3_content = (
-            f"**Price Per Panel**: ${price_per_panel} | **# of Panels**: {num_panels}\\n"
-            f"**Quoted**: ${total_quoted:.2f}\\n\\n"
+            f"**Price Per Panel**: ${price_per_panel} | **# of Panels**: {num_panels}\n"
+            f"**Quoted**: ${total_quoted:.2f}\n\n"
             f"**Add to Contacts**: [Click to Download]({vcard_url})"
         )
         await new_channel.send(message3_content)
