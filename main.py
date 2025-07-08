@@ -681,9 +681,11 @@ def record_payment(contact_id: str, amount: float, channel_id: int):
     try:
         with open(PAYMENTS_FILE, "w") as f:
             json.dump(payments, f, indent=4)
-        return True
-    except IOError:
-        return False
+        total_earned = sum(p['amount'] for p in payments)
+        return True, total_earned
+    except IOError as e:
+        logger.error(f"Could not write to payments file ({PAYMENTS_FILE}): {e}")
+        return False, 0
 
 def get_total_earned() -> float:
     """Calculates the total amount earned from the payments.json file."""
@@ -1044,33 +1046,25 @@ async def paid(interaction: discord.Interaction, amount: float):
         return
 
     # 2. Record the payment in payments.json
-    if not record_payment(contact_id, amount, interaction.channel.id):
-        await interaction.followup.send("❌ Failed to record payment due to a file error.")
-        return
+    success, result = record_payment(contact_id, amount, interaction.channel.id)
+
+    if success:
+        new_total = result
+        embed = discord.Embed(
+            title="✅ Payment Recorded",
+            description=f"✅ Payment of `${amount:,.2f}` recorded for the customer.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="New Total Earned", value=f"${new_total:,.2f}", inline=False)
+        embed.set_footer(text=f"Data created on: {datetime.utcnow().isoformat()}")
         
-    # 3. Get the new total earned
-    total_earned = get_total_earned()
-
-    customer_name = "Unknown"
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
-    try:
-        with open(customer_file, "r") as f:
-            data = json.load(f)
-        p_info = data.get("personal_info", {})
-        customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
-    except Exception:
-        pass
-
-    # 4. Send confirmation message with a delete button
-    view = DeleteChannelView(author_id=interaction.user.id)
-    success_message = (
-        f"✅ Payment of `${amount:,.2f}` recorded for **{customer_name}** (`{contact_id}`).\n\n"
-        f"📈 **New Total Earned: `${total_earned:,.2f}`**\n\n"
-        f"Click the button below to delete this channel."
-    )
-    
-    await interaction.channel.send(success_message, view=view)
-    await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
+        # Create the view with a delete button
+        view = DeleteChannelView(author_id=interaction.user.id)
+        await interaction.channel.send(embed=embed, view=view)
+        await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
+    else:
+        error_message = result
+        await interaction.followup.send(f"❌ Failed to record payment: {error_message}", ephemeral=True)
 
 # --- Bot Lifecycle Events ---
 @client.event
