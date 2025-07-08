@@ -33,15 +33,15 @@ GHL_API_BASE_URL = "https://rest.gohighlevel.com/v1"
 GHL_CONVERSATIONS_TOKEN = os.getenv("GHL_CONVERSATIONS_TOKEN")
 GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-DISCORD_GUILD_NAME = os.getenv("DISCORD_GUILD_NAME", "Solar Detailers")
+DISCORD_GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", 0))
 DISCORD_CATEGORY_NAME = os.getenv("DISCORD_CATEGORY_NAME", "solar-installs")
 SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8000")
 DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL")
 OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "0"))
 
 # --- VALIDATION ---
-if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN, GHL_LOCATION_ID]):
-    raise ValueError("One or more required environment variables are missing.")
+if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN, GHL_LOCATION_ID, DISCORD_GUILD_ID]):
+    raise ValueError("One or more required environment variables are missing (including DISCORD_GUILD_ID).")
 
 os.makedirs(CUSTOMER_DATA_DIR, exist_ok=True)
 os.makedirs(STATS_DIR, exist_ok=True)
@@ -630,10 +630,9 @@ def create_customer_data_file(client_id: str, personal_info: dict, service_histo
         return None
 
 async def create_discord_channel_for_customer(channel_name: str, contact_id: str, customer_data: dict) -> discord.TextChannel | None:
-    """Creates a dedicated Discord channel for a customer and posts their info."""
-    guild = discord.utils.get(client.guilds, name=DISCORD_GUILD_NAME)
+    guild = client.get_guild(DISCORD_GUILD_ID)
     if not guild:
-        logger.error(f"Guild '{DISCORD_GUILD_NAME}' not found.")
+        logger.error(f"Guild with ID '{DISCORD_GUILD_ID}' not found. Make sure DISCORD_GUILD_ID is correct and the bot is in the server.")
         return None
     
     category = discord.utils.get(guild.categories, name=DISCORD_CATEGORY_NAME)
@@ -708,13 +707,13 @@ async def get_jobs():
 @client.event
 async def on_ready():
     logger.info(f"Logged in as {client.user}")
-    guild = discord.utils.get(client.guilds, name=DISCORD_GUILD_NAME)
+    guild = client.get_guild(DISCORD_GUILD_ID)
     if guild:
         tree.copy_global_to(guild=guild)
         await tree.sync(guild=guild)
         logger.info(f"Commands synced to guild: {guild.name}")
     else:
-        logger.warning("Target guild not found. Commands not synced.")
+        logger.warning(f"Target guild with ID {DISCORD_GUILD_ID} not found. Commands not synced.")
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
