@@ -788,6 +788,9 @@ async def startup_event():
     # Start the Discord bot in the background
     asyncio.create_task(client.start(BOT_TOKEN))
 
+    # Ensure the bot_data directory exists
+    os.makedirs(STATS_DIR, exist_ok=True)
+
 # --- Discord Bot Events and Commands ---
 @client.event
 async def on_ready():
