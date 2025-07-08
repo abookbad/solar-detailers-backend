@@ -660,6 +660,7 @@ def update_total_earned(amount: float):
     except IOError:
         return None
 
+<<<<<<< HEAD
 def record_payment(contact_id: str, amount: float, channel_id: int):
     """Appends a payment record to the payments.json file."""
     payments = []
@@ -699,6 +700,8 @@ def get_total_earned() -> float:
     except (json.JSONDecodeError, IOError):
         return 0.0 # Return 0 if file is corrupt or unreadable
 
+=======
+>>>>>>> 82b7411b2a031f72c3fafdd50cdba374465b82c5
 # --- Discord Bot Functions ---
 async def create_customer_channel_and_post(customer_data: dict):
     try:
@@ -1003,6 +1006,102 @@ async def sync(interaction: discord.Interaction):
         return
         
     await interaction.response.defer(ephemeral=True)
+<<<<<<< HEAD
+=======
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="paid", description="Records a payment for the service and marks it as complete.")
+@app_commands.describe(amount="The amount that was paid by the client.")
+async def paid(interaction: discord.Interaction, amount: float):
+    await interaction.response.defer(ephemeral=True)
+
+    # 1. Find the contact ID associated with this channel
+    contact_id = None
+    if os.path.exists(CUSTOMER_DATA_DIR):
+        for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
+            customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
+            if os.path.isdir(customer_path):
+                customer_file = os.path.join(customer_path, "customer_data.json")
+                if os.path.exists(customer_file):
+                    try:
+                        with open(customer_file, "r") as f:
+                            data = json.load(f)
+                        if data.get("discord_channel_id") == interaction.channel.id:
+                            contact_id = data.get("client_id")
+                            break
+                    except (json.JSONDecodeError, IOError):
+                        continue
+    
+    if not contact_id:
+        await interaction.followup.send("❌ This command can only be used in a customer-specific channel.")
+        return
+
+    # 2. Update the customer's data file
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    customer_name = "Unknown"
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+        
+        p_info = data.get("personal_info", {})
+        customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+
+        if not data.get("service_history"):
+            await interaction.followup.send("❌ No service history found for this customer.")
+            return
+
+        # Update the latest service record
+        latest_service = data["service_history"][-1]
+        latest_service["paid_amount"] = amount
+        latest_service["status"] = "completed"
+        latest_service["completion_date"] = datetime.utcnow().isoformat()
+        
+        with open(customer_file, "w") as f:
+            json.dump(data, f, indent=4)
+
+    except FileNotFoundError:
+        await interaction.followup.send(f"❌ Customer data file not found for contact ID: `{contact_id}`")
+        return
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred while updating customer data: {e}")
+        return
+
+    # 3. Update the global total
+    new_total = update_total_earned(amount)
+    if new_total is None:
+        await interaction.followup.send("⚠️ Customer data updated, but failed to update the global earnings total.")
+        return
+
+    # 4. Send confirmation message
+    success_message = (
+        f"✅ Successfully recorded a payment of `${amount:,.2f}` for **{customer_name}** (`{contact_id}`).\n"
+        f"The service has been marked as complete.\n\n"
+        f"📈 **New Total Earned: `${new_total:,.2f}`**"
+    )
+    # Send to the channel, not as an ephemeral message
+    await interaction.channel.send(success_message)
+    await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
+
+# --- API Endpoints ---
+@app.post("/customer/create")
+async def create_customer(payload: VercelWebhookPayload):
+    """
+    Webhook to create a GHL contact, then create a customer folder using the GHL ID.
+    """
+    logger.info(f"Received new customer payload: {payload.formData.model_dump_json()}")
+>>>>>>> 82b7411b2a031f72c3fafdd50cdba374465b82c5
     try:
         if interaction.guild:
             tree.copy_global_to(guild=interaction.guild)

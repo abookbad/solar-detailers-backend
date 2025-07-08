@@ -1,0 +1,27 @@
+{
+    "client_id": "G4J3hrsTM8YPLiy2BasF",
+    "personal_info": {
+        "first_name": "Molica",
+        "last_name": "Alloay",
+        "email": "",
+        "phone_number": "9099473101",
+        "address": "3257 sweet water drive , Ontario "
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-04T20:38:58.570714",
+            "quote_amount": 12.0,
+            "service_details": "001 panels at $12 per panel.",
+            "follow_up_date": "2025-10-02T20:38:58.570714"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-04T20:38:58.570744",
+    "discord_channel_id": 1390794039506243634
+}
