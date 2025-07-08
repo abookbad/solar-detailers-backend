@@ -84,13 +84,13 @@ tree = app_commands.CommandTree(client)
 # Models updated to match the new webhook structure with a nested "formData" object.
 class FormData(BaseModel):
     firstName: str
-    lastInitial: str
-    streetAddress: str
+    lastInitial: str = Field(..., alias="lastInitial")
+    streetAddress: str = Field(..., alias="streetAddress")
     city: str
     phone: str
-    pricePerPanel: str
-    panelCount: str
-    totalAmount: str
+    pricePerPanel: str = Field(..., alias="pricePerPanel")
+    panelCount: str = Field(..., alias="panelCount")
+    totalAmount: str = Field(..., alias="totalAmount")
 
 class VercelWebhookPayload(BaseModel):
     formData: FormData
@@ -1126,53 +1126,67 @@ async def on_ready():
     logger.info('------')
 
 # --- FastAPI Web Server ---
-class CustomerCreateRequest(BaseModel):
-    first_name: str
-    last_name: str
-    phone: str
-    address: str
+class FormData(BaseModel):
+    firstName: str
+    lastInitial: str = Field(..., alias="lastInitial")
+    streetAddress: str = Field(..., alias="streetAddress")
     city: str
-    service_details: str
-    quote_amount: float
-    service_date: str
-    follow_up_date: str
+    phone: str
+    pricePerPanel: str = Field(..., alias="pricePerPanel")
+    panelCount: str = Field(..., alias="panelCount")
+    totalAmount: str = Field(..., alias="totalAmount")
+
+class CustomerCreateRequest(BaseModel):
+    formData: FormData
 
 @app.post("/customer/create")
 async def handle_customer_create(request: CustomerCreateRequest):
     """
-    Endpoint to create a new customer, GHL contact, and Discord channel.
-    This is the main entry point from an external system (e.g., a webhook).
+    Endpoint to create a new customer, GHL contact, and Discord channel
+    based on the provided API documentation.
     """
-    logger.info(f"Received request to create customer: {request.first_name} {request.last_name}")
+    form = request.formData
+    logger.info(f"Received request to create customer: {form.firstName} {form.lastInitial}")
+
+    # The documentation uses lastInitial, but the rest of the system uses last_name.
+    # We'll use the initial as the last name for now.
+    last_name = form.lastInitial
 
     # 1. Create contact in GoHighLevel
     ghl_contact_id = create_ghl_contact(
-        first_name=request.first_name,
-        last_name=request.last_name,
-        phone=request.phone,
-        address=request.address,
-        city=request.city
+        first_name=form.firstName,
+        last_name=last_name,
+        phone=form.phone,
+        address=form.streetAddress,
+        city=form.city
     )
     if not ghl_contact_id:
         logger.error("Failed to create GHL contact.")
         raise HTTPException(status_code=500, detail="Failed to create GHL contact.")
 
     # 2. Create local customer data file
+    service_details = f"{form.panelCount} panels at ${form.pricePerPanel} per panel."
+    quote_amount = float(form.totalAmount)
+    
+    # Generate dates since they are not in the request body
+    service_date = datetime.utcnow()
+    follow_up_date = service_date + timedelta(days=90) # 3 months follow-up
+
     customer_data = create_customer_data_file(
         client_id=ghl_contact_id,
         personal_info={
-            "first_name": request.first_name,
-            "last_name": request.last_name,
-            "phone_number": request.phone,
-            "address": request.address,
-            "city": request.city,
-            "email": "" # Assuming email is not provided in this flow
+            "first_name": form.firstName,
+            "last_name": last_name,
+            "phone_number": form.phone,
+            "address": form.streetAddress,
+            "city": form.city,
+            "email": "" # Not provided in this flow
         },
         service_history=[{
-            "service_date": request.service_date,
-            "service_details": request.service_details,
-            "quote_amount": request.quote_amount,
-            "follow_up_date": request.follow_up_date,
+            "service_date": service_date.isoformat(),
+            "service_details": service_details,
+            "quote_amount": quote_amount,
+            "follow_up_date": follow_up_date.isoformat(),
             "status": "pending",
             "paid_amount": 0,
             "completed_date": None
@@ -1183,7 +1197,7 @@ async def handle_customer_create(request: CustomerCreateRequest):
         raise HTTPException(status_code=500, detail="Failed to create local customer data file.")
 
     # 3. Create Discord channel
-    channel_name = f"{request.first_name}-{request.last_name}-{ghl_contact_id[-4:]}".lower()
+    channel_name = f"{form.firstName}-{last_name}-{ghl_contact_id[-4:]}".lower().replace(" ", "-")
     try:
         channel = await create_discord_channel_for_customer(
             channel_name=channel_name,
@@ -1193,14 +1207,12 @@ async def handle_customer_create(request: CustomerCreateRequest):
         logger.info(f"Successfully created Discord channel #{channel.name} for {ghl_contact_id}")
     except Exception as e:
         logger.error(f"Failed to create Discord channel for {ghl_contact_id}: {e}")
-        # Even if channel creation fails, don't fail the whole request
-        # The channel can be created manually later if needed.
+        # Non-critical error, continue response
         pass
         
-    return {"status": "success", "ghl_contact_id": ghl_contact_id}
+    return {"message": "Customer folder created/updated successfully", "contact_id": ghl_contact_id}
 
-
-# This is a placeholder for a jobs endpoint if you need it.
+# Placeholder for jobs endpoint from docs
 @app.get("/jobs")
 async def get_jobs():
     return {"jobs": "This is a placeholder for a jobs endpoint."}
