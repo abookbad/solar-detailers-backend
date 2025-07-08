@@ -28,6 +28,9 @@ load_dotenv()
 
 # --- Configuration ---
 CUSTOMER_DATA_DIR = "customer_data"
+STATS_DIR = "bot_data"
+STATS_FILE = os.path.join(STATS_DIR, "stats.json")
+PAYMENTS_FILE = os.path.join(STATS_DIR, "payments.json")
 GHL_API_TOKEN = os.getenv("GHL_API_TOKEN")
 GHL_API_BASE_URL = "https://rest.gohighlevel.com/v1"
 GHL_SMS_FROM_NUMBER = "+19094049641"
@@ -37,7 +40,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DISCORD_CATEGORY_NAME = "Solar Detail"
 
 # Dashboard sync configuration
-DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL", "http://your-dashboard-domain.com")
+DASHBOARD_BASE_URL = os.path.join(os.getenv("DASHBOARD_BASE_URL"), "api/backend")
 SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://windows.agencydevworks.ai:8000")
 
 # --- Token Validation ---
@@ -197,6 +200,23 @@ class ConfirmUpdateView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         await interaction.message.edit(view=self)
+
+class DeleteChannelView(discord.ui.View):
+    def __init__(self, author_id: int):
+        super().__init__(timeout=300) # 5-minute timeout
+        self.author_id = author_id
+
+    @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def delete_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("❌ You are not authorized to delete this channel.", ephemeral=True)
+            return
+
+        button.disabled = True
+        button.label = "Deleting..."
+        await interaction.response.edit_message(view=self)
+
+        await interaction.channel.delete(reason=f"Channel deleted by {interaction.user.name} after marking service as paid.")
 
 # --- Helper Functions ---
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
@@ -465,14 +485,14 @@ async def download_and_store_images(attachments, contact_id: str, image_type: st
     
     return downloaded_files
 
-async def upload_images_to_vercel(contact_id: str, image_files: list):
+async def upload_images_to_vercel(contact_id: str, image_files: list, service_apt_num: int):
     """Uploads images to Vercel and returns the gallery URL."""
     # This is a placeholder for the Vercel upload logic
     # You'll need to implement the actual Vercel API call here
     
     # For now, return a placeholder URL
     # Replace this with actual Vercel upload logic
-    gallery_url = f"https://your-vercel-app.vercel.app/gallery/{contact_id}"
+    gallery_url = f"https://solardetailers.com/service-gallery/{contact_id}/{service_apt_num}"
     
     return gallery_url
 
@@ -500,7 +520,7 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
         formatted_phone = f"+{cleaned_phone}"
         
         # Use the service gallery URL format
-        service_gallery_url = f"https://your-domain.com/service-gallery/{contact_id}/{service_apt_num}"
+        service_gallery_url = f"https://solardetailers.com/service-gallery/{contact_id}/{service_apt_num}"
         
         message = (
             f"Hi {first_name}! 📸\n\n"
@@ -534,7 +554,7 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
     try:
-        response = requests.get(f"{DASHBOARD_BASE_URL}/api/backend/sync-pictures?contactId={contact_id}")
+        response = requests.get(f"{DASHBOARD_BASE_URL}/sync-pictures?contactId={contact_id}")
         if response.status_code == 200:
             data = response.json()
             return data.get('exists', False), data
@@ -549,7 +569,7 @@ async def sync_service_to_dashboard(contact_id: str, service_apt_num: int, befor
     # First check if contact exists in dashboard
     exists, contact_info = await check_contact_exists_in_dashboard(contact_id)
     if not exists:
-        return False, "Contact not found in dashboard system"
+        return False, "Contact not found in dashboard. Please ensure the customer has been added to the dashboard system first."
     
     # Get customer data for service details
     customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
@@ -604,7 +624,7 @@ async def sync_service_to_dashboard(contact_id: str, service_apt_num: int, befor
     }
     
     try:
-        response = requests.post(f"{DASHBOARD_BASE_URL}/api/backend/sync-pictures", json=payload)
+        response = requests.post(f"{DASHBOARD_BASE_URL}/sync-pictures", json=payload)
         
         if response.status_code == 200:
             result = response.json()
@@ -616,6 +636,68 @@ async def sync_service_to_dashboard(contact_id: str, service_apt_num: int, befor
     except Exception as e:
         error_msg = f"Error syncing to dashboard: {e}"
         return False, error_msg
+
+def update_total_earned(amount: float):
+    """Reads, updates, and writes the total earned amount in a stats file."""
+    os.makedirs(STATS_DIR, exist_ok=True)
+    stats = {"total_earned": 0.0}
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r") as f:
+                stats = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            # If file is empty or corrupted, start with a fresh stats dict
+            pass
+    
+    # Ensure total_earned is a float
+    current_total = float(stats.get("total_earned", 0.0))
+    stats["total_earned"] = current_total + amount
+    
+    try:
+        with open(STATS_FILE, "w") as f:
+            json.dump(stats, f, indent=4)
+        return stats["total_earned"]
+    except IOError:
+        return None
+
+def record_payment(contact_id: str, amount: float, channel_id: int):
+    """Appends a payment record to the payments.json file."""
+    payments = []
+    if os.path.exists(PAYMENTS_FILE):
+        try:
+            with open(PAYMENTS_FILE, "r") as f:
+                payments = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass # Start with an empty list if file is corrupt/empty
+    
+    new_payment = {
+        "contact_id": contact_id,
+        "amount": amount,
+        "channel_id": channel_id,
+        "date": datetime.utcnow().isoformat()
+    }
+    payments.append(new_payment)
+    
+    try:
+        with open(PAYMENTS_FILE, "w") as f:
+            json.dump(payments, f, indent=4)
+        return True
+    except IOError:
+        return False
+
+def get_total_earned() -> float:
+    """Calculates the total amount earned from the payments.json file."""
+    if not os.path.exists(PAYMENTS_FILE):
+        return 0.0
+    
+    try:
+        with open(PAYMENTS_FILE, "r") as f:
+            payments = json.load(f)
+        
+        total = sum(item.get('amount', 0) for item in payments)
+        return total
+    except (json.JSONDecodeError, IOError):
+        return 0.0 # Return 0 if file is corrupt or unreadable
 
 # --- Discord Bot Functions ---
 async def create_customer_channel_and_post(customer_data: dict):
@@ -707,7 +789,21 @@ async def startup_event():
 # --- Discord Bot Events and Commands ---
 @client.event
 async def on_ready():
-    await tree.sync()
+    # Sync commands to a specific guild for faster updates.
+    # This assumes the bot is primarily used in one server.
+    if client.guilds:
+        guild = client.guilds[0]
+        tree.copy_global_to(guild=guild)
+        try:
+            await tree.sync(guild=guild)
+            logger.info(f"✅ Command tree synced to guild: {guild.name} (ID: {guild.id})")
+        except Exception as e:
+            logger.error(f"Failed to sync commands to guild {guild.id}: {e}")
+    else:
+        logger.warning("Bot is not in any guilds. Did not sync command tree.")
+    
+    logger.info(f'Logged in as {client.user} (ID: {client.user.id})')
+    logger.info('------')
 
 @client.event
 async def on_message(message):
@@ -755,7 +851,7 @@ async def on_message(message):
                     # If it's "after" images, also upload to Vercel and send link to client
                     if image_type == 'after':
                         try:
-                            gallery_url = await upload_images_to_vercel(contact_id, downloaded_files)
+                            gallery_url = await upload_images_to_vercel(contact_id, downloaded_files, service_apt_num)
                             await send_gallery_link_to_client(contact_id, gallery_url, service_apt_num)
                             success_msg += f"\n📱 Gallery link sent to client: {gallery_url}"
                         except Exception as e:
@@ -900,554 +996,1987 @@ async def get_customer(interaction: discord.Interaction, client_id: str):
     embed.set_footer(text=f"Data created on: {data['created_at']}")
     await interaction.response.send_message(embed=embed)
 
-# --- API Endpoints ---
-@app.post("/customer/create")
-async def create_customer(payload: VercelWebhookPayload):
-    """
-    Webhook to create a GHL contact, then create a customer folder using the GHL ID.
-    """
-    logger.info(f"Received new customer payload: {payload.formData.model_dump_json()}")
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
     try:
-        # Extract the actual form data from the nested object
-        form_data = payload.formData
-
-        # Create the contact in GHL first
-        logger.info("Attempting to create GHL contact...")
-        contact_id = create_ghl_contact(
-            first_name=form_data.firstName,
-            last_name=form_data.lastInitial,
-            phone=form_data.phone,
-            address=form_data.streetAddress,
-            city=form_data.city
-        )
-
-        if not contact_id:
-            logger.error("create_ghl_contact returned None. Aborting.")
-            raise HTTPException(
-                status_code=500, 
-                detail="Failed to create contact in GoHighLevel. Contact ID was not returned."
-            )
-
-        # The GHL contact ID is now the primary identifier and folder name.
-        customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
-
-        try:
-            logger.info(f"Creating customer directory: {customer_dir}")
-            # Use exist_ok=True in case we are updating an existing customer's service.
-            os.makedirs(customer_dir, exist_ok=True)
-        except OSError as e:
-            logger.error(f"Failed to create customer directory: {customer_dir}. Error: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to create customer directory: {e}")
-        
-        # Use current time for service date and add a follow-up date
-        service_date = datetime.utcnow()
-        follow_up_date = service_date + timedelta(days=90)
-        
-        # --- Map new form data to our customer data structure ---
-        full_address = f"{form_data.streetAddress}, {form_data.city}"
-        service_details_text = f"{form_data.panelCount} panels at ${form_data.pricePerPanel} per panel."
-        
-        # Safely convert totalAmount to float, defaulting to 0.0 if empty or invalid.
-        try:
-            quote_amount = float(form_data.totalAmount)
-        except (ValueError, TypeError):
-            logger.warning(f"Could not convert totalAmount '{form_data.totalAmount}' to float. Defaulting to 0.0")
-            quote_amount = 0.0
-
-        customer_data = {
-            "client_id": contact_id,  # GHL Contact ID is the main ID
-            "personal_info": {
-                "first_name": form_data.firstName,
-                "last_name": form_data.lastInitial, # Map lastInitial to last_name
-                "email": "",  # Email is missing in the new payload, saving as empty.
-                "phone_number": form_data.phone,
-                "address": full_address, # Use combined address
-            },
-            "service_history": [
-                {
-                    "service_date": service_date.isoformat(),
-                    "quote_amount": quote_amount,
-                    "service_details": service_details_text,
-                    "follow_up_date": follow_up_date.isoformat(),
-                }
-            ],
-            "membership_info": {
-                "quoted_price": 0.0,
-                "plan_basis_months": 0,
-                "invite_sent_date": "",
-                "status": "not_invited"  # not_invited, invited, active, cancelled
-            },
-            "stripe_customer_id": "",  # Initialize as empty, will be set later via /stripeCustomer endpoint
-            "created_at": datetime.utcnow().isoformat(),
-        }
-
-        file_path = os.path.join(customer_dir, "customer_data.json")
-        try:
-            logger.info(f"Writing customer data to {file_path}")
-            with open(file_path, "w") as f:
-                json.dump(customer_data, f, indent=4)
-        except IOError as e:
-            logger.error(f"Failed to write customer data to {file_path}. Error: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to write customer data: {e}")
-
-        # Trigger the Discord bot to create the channel and post the message
-        logger.info("Triggering Discord channel creation...")
-        await create_customer_channel_and_post(customer_data)
-        logger.info("Successfully completed customer creation process.")
-
-        return {"message": "Customer folder created/updated successfully", "contact_id": contact_id}
-
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
     except Exception as e:
-        logger.error(f"An unhandled exception occurred in /customer/create endpoint: {e}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="An internal server error occurred.")
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
 
-@app.post("/contactUpdate")
-async def contact_update(contactId: str, payload: ContactUpdatePayload):
-    """
-    Receives an update for a contact, compares it to stored data,
-    and sends a confirmation message to Discord if data is different.
-    """
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contactId, "customer_data.json")
-    if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found.")
+@tree.command(name="paid", description="Records a payment and prompts to delete the channel.")
+@app_commands.describe(amount="The amount that was paid by the client.")
+async def paid(interaction: discord.Interaction, amount: float):
+    await interaction.response.defer(ephemeral=True)
 
-    with open(customer_file, "r") as f:
-        existing_data = json.load(f)
+    # 1. Find the contact ID associated with this channel
+    contact_id = None
+    if os.path.exists(CUSTOMER_DATA_DIR):
+        for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
+            customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
+            if os.path.isdir(customer_path):
+                customer_file = os.path.join(customer_path, "customer_data.json")
+                if os.path.exists(customer_file):
+                    try:
+                        with open(customer_file, "r") as f:
+                            data = json.load(f)
+                        if data.get("discord_channel_id") == interaction.channel.id:
+                            contact_id = data.get("client_id")
+                            break
+                    except (json.JSONDecodeError, IOError):
+                        continue
     
-    existing_p_info = existing_data.get("personal_info", {})
-    
-    # Create a dictionary from the payload, only including non-empty fields
-    new_p_info = {
-        "first_name": payload.firstName,
-        "last_name": payload.lastName,
-        "phone_number": existing_p_info.get("phone_number"), # Keep original phone
-    }
-    
-    # Only add email and address if they were provided (non-empty)
-    if payload.email:
-        new_p_info["email"] = payload.email
-    else:
-        new_p_info["email"] = existing_p_info.get("email", "")
+    if not contact_id:
+        await interaction.followup.send("❌ This command can only be used in a customer-specific channel.")
+        return
+
+    # 2. Record the payment in payments.json
+    if not record_payment(contact_id, amount, interaction.channel.id):
+        await interaction.followup.send("❌ Failed to record payment due to a file error.")
+        return
         
-    if payload.address:
-        new_p_info["address"] = payload.address
-    else:
-        new_p_info["address"] = existing_p_info.get("address", "")
+    # 3. Get the new total earned
+    total_earned = get_total_earned()
 
-    # Compare the dictionaries
-    if existing_p_info == new_p_info:
-        return {"message": "No changes detected. Data is already up-to-date."}
-
-    # If different, send a message to the Discord channel
-    channel_id = existing_data.get("discord_channel_id")
-    if not channel_id:
-        raise HTTPException(status_code=500, detail="Discord channel ID not found for this contact.")
-
-    channel = client.get_channel(channel_id)
-    if not channel:
-        raise HTTPException(status_code=500, detail=f"Could not find Discord channel with ID: {channel_id}")
-
-    # Format a comparison message
-    diff_message = "A customer has updated their profile information. Please review the changes:\n\n"
-    diff_message += "--- **Original Data** ---\n"
-    for key, value in existing_p_info.items():
-        diff_message += f"**{key.replace('_', ' ').title()}**: {value}\n"
-    
-    diff_message += "\n--- **New Data** ---\n"
-    for key, value in new_p_info.items():
-        diff_message += f"**{key.replace('_', ' ').title()}**: {value}\n"
-
-    view = ConfirmUpdateView(contact_id=contactId, new_data=new_p_info)
-    await channel.send(diff_message, view=view)
-
-    return {"message": "Changes detected. A confirmation request has been sent to the staff channel."}
-
-# --- Membership API Endpoints ---
-@app.get("/jobs")
-async def get_jobs_list():
-    """
-    Returns a list of all jobs, sorted by most recent service date.
-    This is for the 'New Membership' UI to select a job to upgrade.
-    """
-    jobs = get_all_jobs()
-    return {"jobs": jobs}
-
-@app.post("/memberships/upgrade")
-async def upgrade_to_membership(upgrade_data: MembershipUpgrade):
-    """
-    Receives membership upgrade details and sends an SMS invite to the user.
-    Also stores the quoted maintenance price and plan details.
-    """
-    # 1. Find the customer's data file using the contactId
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, upgrade_data.contactId, "customer_data.json")
-    if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found for the provided contact ID.")
-
+    customer_name = "Unknown"
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
     try:
         with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to read customer data file.")
+            data = json.load(f)
+        p_info = data.get("personal_info", {})
+        customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+    except Exception:
+        pass
+
+    # 4. Send confirmation message with a delete button
+    view = DeleteChannelView(author_id=interaction.user.id)
+    success_message = (
+        f"✅ Payment of `${amount:,.2f}` recorded for **{customer_name}** (`{contact_id}`).\n\n"
+        f"📈 **New Total Earned: `${total_earned:,.2f}`**\n\n"
+        f"Click the button below to delete this channel."
+    )
     
-    # 2. Update membership information
-    customer_data["membership_info"] = {
-        "quoted_price": upgrade_data.pricePerBasis,
-        "plan_basis_months": upgrade_data.planBasis,
-        "invite_sent_date": datetime.utcnow().isoformat(),
-        "status": "invited"
-    }
-    
-    # 3. Save the updated customer data
+    await interaction.channel.send(success_message, view=view)
+    await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
     try:
-        with open(customer_file, "w") as f:
-            json.dump(customer_data, f, indent=4)
-    except IOError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save membership data: {e}")
-    
-    # 4. Get the necessary info for the SMS
-    p_info = customer_data.get("personal_info", {})
-    first_name = p_info.get("first_name")
-    phone_number = p_info.get("phone_number")
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
 
-    if not all([first_name, phone_number]):
-        raise HTTPException(status_code=400, detail="Customer data is missing first name or phone number.")
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
 
-    # 5. Send the SMS invite
-    success, message = await send_ghl_sms_invite(upgrade_data.contactId, first_name, phone_number)
-
-    if not success:
-        raise HTTPException(status_code=500, detail=message)
-    
-    return {
-        "message": message,
-        "membership_details": {
-            "quoted_price": upgrade_data.pricePerBasis,
-            "plan_basis_months": upgrade_data.planBasis,
-            "invite_sent_date": customer_data["membership_info"]["invite_sent_date"]
-        }
-    }
-
-@app.get("/membership/details")
-async def get_membership_details(contactId: str):
-    """
-    Retrieves all stored details for a customer using their contact ID.
-    Used by the frontend to pre-fill the membership profile page.
-    """
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contactId, "customer_data.json")
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
     if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found for the provided contact ID.")
-
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
     try:
         with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-        
-        return customer_data
-        
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to read or parse customer data file.")
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
 
-@app.post("/stripeCustomer")
-async def update_stripe_customer(contactId: str, payload: StripeCustomerPayload):
-    """
-    Updates the Stripe customer ID for a given contact.
-    """
-    # Verify the contact_id in the payload matches the query parameter
-    if payload.contact_id != contactId:
-        raise HTTPException(status_code=400, detail="Contact ID in payload does not match query parameter.")
-    
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contactId, "customer_data.json")
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
     if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found for the provided contact ID.")
-
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
     try:
         with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-        
-        # Update the Stripe customer ID
-        customer_data["stripe_customer_id"] = payload.stripe_customer_id
-        
-        with open(customer_file, "w") as f:
-            json.dump(customer_data, f, indent=4)
-        
-        return {"message": f"Stripe customer ID updated successfully for contact {contactId}"}
-        
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to read or parse customer data file.")
-    except IOError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write customer data: {e}")
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
 
-@app.post("/membership/status")
-async def update_membership_status(payload: MembershipStatusUpdate):
-    """
-    Updates the membership status for a given contact (active, cancelled, etc.).
-    """
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, payload.contactId, "customer_data.json")
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
     if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found for the provided contact ID.")
-
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
     try:
         with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-        
-        # Update the membership status
-        if "membership_info" not in customer_data:
-            customer_data["membership_info"] = {
-                "quoted_price": 0.0,
-                "plan_basis_months": 0,
-                "invite_sent_date": "",
-                "status": "not_invited"
-            }
-        
-        # Update individual fields if they are provided
-        if payload.status is not None:
-            customer_data["membership_info"]["status"] = payload.status
-        
-        if payload.payment_method is not None:
-            customer_data["membership_info"]["payment_method"] = payload.payment_method
-        
-        if payload.plan_basis_months is not None:
-            customer_data["membership_info"]["plan_basis_months"] = payload.plan_basis_months
-        
-        if payload.quoted_price is not None:
-            customer_data["membership_info"]["quoted_price"] = payload.quoted_price
-        
-        # Add timestamp for status change
-        customer_data["membership_info"]["status_updated_date"] = datetime.utcnow().isoformat()
-        
-        with open(customer_file, "w") as f:
-            json.dump(customer_data, f, indent=4)
-        
-        response_data = {
-            "message": f"Membership information updated for contact {payload.contactId}",
-            "membership_info": customer_data["membership_info"]
-        }
-        
-        return response_data
-        
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to read or parse customer data file.")
-    except IOError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write customer data: {e}")
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
 
-@app.get("/membership/status")
-async def get_membership_status(contactId: str):
-    """
-    Retrieves the membership status for a given contact.
-    """
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contactId, "customer_data.json")
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
     if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data not found for the provided contact ID.")
-
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
     try:
         with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-        
-        # Get membership info or return default
-        membership_info = customer_data.get("membership_info", {
-            "quoted_price": 0.0,
-            "plan_basis_months": 0,
-            "invite_sent_date": "",
-            "status": "not_invited"
-        })
-        
-        response_data = {
-            "contactId": contactId,
-            "membership_info": membership_info
-        }
-        
-        return response_data
-        
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to read or parse customer data file.")
-    except IOError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read customer data: {e}")
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
 
-# --- Calendar API Endpoints ---
-
-@app.get("/appointments/{day}")
-async def get_day_appointments(day: str):
-    """
-    Get all appointments for a specific day (YYYY-MM-DD).
-    """
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
     try:
-        target_date = date.fromisoformat(day)
-        appointments = calendar_manager.get_appointments_for_day(target_date)
-        return {"date": target_date, "appointments": appointments}
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Please use YYYY-MM-DD.")
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
 
-@app.get("/appointments/available/{day}")
-async def get_available_appointment_slots(day: str):
-    """
-    Get available 1-hour appointment slots for a specific day (YYYY-MM-DD).
-    """
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
     try:
-        target_date = date.fromisoformat(day)
-        slots = calendar_manager.get_available_slots(target_date)
-        return {"date": target_date, "available_slots": slots}
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Please use YYYY-MM-DD.")
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
 
-@app.get("/appointments/available/bulk/{days_in_advance}")
-async def get_bulk_available_slots_endpoint(days_in_advance: int):
-    """
-    Get available appointment slots for the next X days.
-    Returns a dictionary with dates as keys and lists of available slots as values.
-    """
-    # Set a reasonable limit to prevent abuse
-    if not 0 < days_in_advance <= 60:
-        raise HTTPException(status_code=400, detail="Days in advance must be between 1 and 60.")
-    
-    slots = calendar_manager.get_bulk_available_slots(days_in_advance)
-    return slots
-
-@app.post("/appointments/book")
-async def book_new_appointment(booking: AppointmentBooking):
-    """
-    Book a new appointment for a given contact ID and ISO timestamp.
-    """
-    success, message = calendar_manager.book_appointment(booking.contact_id, booking.start_time_iso)
-    if not success:
-        raise HTTPException(status_code=409, detail=message) # 409 Conflict
-    return {"message": message}
-
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Solar Detailing Customer API"}
-
-@app.get("/debug-token")
-async def debug_token():
-    """
-    A temporary and secure endpoint to verify the GHL token being used by the application.
-    """
-    token = os.getenv("GHL_CONVERSATIONS_TOKEN")
-    if token:
-        # Show the first 8 and last 4 characters for verification, keeping the full token secret.
-        token_preview = f"{token[:8]}...{token[-4:]}"
-        return {
-            "message": "This is a preview of the GHL Conversations Token the application is currently using.",
-            "token_preview": token_preview
-        }
-    else:
-        return {"error": "GHL_CONVERSATIONS_TOKEN is not set in the server's environment."}
-
-@app.get("/api/images/{contact_id}/service_apt{service_num}")
-async def get_service_images(contact_id: str, service_num: int):
-    """
-    Retrieves all before and after images for a specific service appointment.
-    """
-    # Check if customer exists
-    customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
-    if not os.path.exists(customer_dir):
-        raise HTTPException(status_code=404, detail=f"Customer not found: {contact_id}")
-    
-    # Check if service appointment exists
-    service_dir = os.path.join(customer_dir, "images", f"service_apt{service_num}")
-    if not os.path.exists(service_dir):
-        # Let's check what service appointments are available
-        images_dir = os.path.join(customer_dir, "images")
-        available_services = []
-        if os.path.exists(images_dir):
-            available_services = [d for d in os.listdir(images_dir) if d.startswith("service_apt")]
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
         
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Service appointment {service_num} not found. Available services: {available_services}"
-        )
-    
-    before_dir = os.path.join(service_dir, "before")
-    after_dir = os.path.join(service_dir, "after")
-    
-    before_images = []
-    after_images = []
-    
-    # Get before images
-    if os.path.exists(before_dir):
-        for filename in os.listdir(before_dir):
-            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                image_url = f"{SERVER_BASE_URL}/images/{contact_id}/images/service_apt{service_num}/before/{filename}"
-                before_images.append({
-                    "filename": filename,
-                    "url": image_url
-                })
-    
-    # Get after images
-    if os.path.exists(after_dir):
-        for filename in os.listdir(after_dir):
-            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                image_url = f"{SERVER_BASE_URL}/images/{contact_id}/images/service_apt{service_num}/after/{filename}"
-                after_images.append({
-                    "filename": filename,
-                    "url": image_url
-                })
-    
-    return {
-        "contact_id": contact_id,
-        "service_appointment": service_num,
-        "before_images": before_images,
-        "after_images": after_images,
-        "total_images": len(before_images) + len(after_images)
-    }
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
 
-@app.get("/api/images/{contact_id}")
-async def list_service_appointments(contact_id: str):
-    """
-    Lists all available service appointments with images for a contact.
-    """
-    # Check if customer exists
-    customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
-    if not os.path.exists(customer_dir):
-        raise HTTPException(status_code=404, detail=f"Customer not found: {contact_id}")
-    
-    images_dir = os.path.join(customer_dir, "images")
-    if not os.path.exists(images_dir):
-        return {
-            "contact_id": contact_id,
-            "service_appointments": [],
-            "message": "No images directory found"
-        }
-    
-    service_appointments = []
-    
-    for item in os.listdir(images_dir):
-        if item.startswith("service_apt") and os.path.isdir(os.path.join(images_dir, item)):
-            service_num = item.replace("service_apt", "")
-            service_dir = os.path.join(images_dir, item)
-            
-            before_count = 0
-            after_count = 0
-            
-            before_dir = os.path.join(service_dir, "before")
-            after_dir = os.path.join(service_dir, "after")
-            
-            if os.path.exists(before_dir):
-                before_count = len([f for f in os.listdir(before_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))])
-            
-            if os.path.exists(after_dir):
-                after_count = len([f for f in os.listdir(after_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))])
-            
-            service_appointments.append({
-                "service_number": int(service_num) if service_num.isdigit() else service_num,
-                "before_image_count": before_count,
-                "after_image_count": after_count,
-                "total_images": before_count + after_count,
-                "endpoint": f"/api/images/{contact_id}/service_apt{service_num}"
-            })
-    
-    # Sort by service number
-    service_appointments.sort(key=lambda x: x["service_number"] if isinstance(x["service_number"], int) else 999)
-    
-    return {
-        "contact_id": contact_id,
-        "service_appointments": service_appointments,
-        "total_services": len(service_appointments)
-    }
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
 
-if __name__ == "__main__":
-    import uvicorn
-    # This block is now only for local development.
-    # The Uvicorn command should be used for running the combined app.
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
-    server = uvicorn.Server(config)
-    server.run() 
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+        embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+        embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+        embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+    embed.set_footer(text=f"Data created on: {data['created_at']}")
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="sync", description="Owner-only command to sync the command tree.")
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+        
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if interaction.guild:
+            tree.copy_global_to(guild=interaction.guild)
+            await tree.sync(guild=interaction.guild)
+            await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+            logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+        else:
+            await tree.sync()
+            await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+            logger.info("Command tree synced manually globally.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+        logger.error(f"Failed to sync command tree: {e}")
+
+@tree.command(name="customers", description="Lists all customer IDs.")
+async def list_customers(interaction: discord.Interaction):
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        await interaction.response.send_message("Customer data directory not found.")
+        return
+    customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+    if not customer_ids:
+        await interaction.response.send_message("No customers found.")
+        return
+    id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+    message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+    await interaction.response.send_message(message)
+
+@tree.command(name="customer", description="Get details for a specific customer using their GHL Contact ID.")
+@app_commands.describe(client_id="The GHL Contact ID of the client to look up")
+async def get_customer(interaction: discord.Interaction, client_id: str):
+    customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+    customer_file = os.path.join(customer_dir, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+        return
+    try:
+        with open(customer_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        await interaction.response.send_message(f"Error reading customer data: {e}")
+        return
+    embed = discord.Embed(
+        title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+    embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+    embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+    embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+    if data.get("service_history"):
+        embed.add_field(name="--- Last Service ---", value="", inline=False)
+        last_service = data["service_history"][-1]
+        embed.add_field(
