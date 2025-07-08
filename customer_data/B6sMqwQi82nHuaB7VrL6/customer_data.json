@@ -1,0 +1,27 @@
+{
+    "client_id": "B6sMqwQi82nHuaB7VrL6",
+    "personal_info": {
+        "first_name": "Sam",
+        "last_name": "G",
+        "email": "",
+        "phone_number": "9099193470",
+        "address": "6581 Westmont Avenue, Rancho Cucamonga"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-05T23:49:31.532801",
+            "quote_amount": 192.0,
+            "service_details": "12 panels at $16 per panel.",
+            "follow_up_date": "2025-10-03T23:49:31.532801"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-05T23:49:31.532840",
+    "discord_channel_id": 1391204381013311499
+}

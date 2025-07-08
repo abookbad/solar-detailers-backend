@@ -1,0 +1,27 @@
+{
+    "client_id": "X85PBVEOWJibtA7C5VOM",
+    "personal_info": {
+        "first_name": "Josh",
+        "last_name": "Rojas",
+        "email": "",
+        "phone_number": "3236319616",
+        "address": "5085 Rosewood St, Montclair"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-06-29T19:40:00.566585",
+            "quote_amount": 330.0,
+            "service_details": "30 panels at $11 per panel.",
+            "follow_up_date": "2025-09-27T19:40:00.566585"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-06-29T19:40:00.566627",
+    "discord_channel_id": 1388967260705652768
+}
