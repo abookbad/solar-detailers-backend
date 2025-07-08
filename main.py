@@ -661,31 +661,72 @@ def update_total_earned(amount: float):
         return None
 
 def record_payment(contact_id: str, amount: float, channel_id: int):
-    """Appends a payment record to the payments.json file."""
-    payments = []
+    """
+    Appends a payment record to the global payments.json file AND
+    updates the specific customer's data file with their payment history.
+    """
+    # === 1. Update Global payments file ===
+    global_payments = []
     if os.path.exists(PAYMENTS_FILE):
         try:
             with open(PAYMENTS_FILE, "r") as f:
-                payments = json.load(f)
+                global_payments = json.load(f)
         except (json.JSONDecodeError, IOError):
-            pass # Start with an empty list if file is corrupt/empty
-    
-    new_payment = {
+            pass
+
+    new_global_payment = {
         "contact_id": contact_id,
         "amount": amount,
-        "channel_id": channel_id,
-        "date": datetime.utcnow().isoformat()
+        "date": datetime.utcnow().isoformat(),
+        "channel_id": channel_id
     }
-    payments.append(new_payment)
-    
+    global_payments.append(new_global_payment)
+
     try:
         with open(PAYMENTS_FILE, "w") as f:
-            json.dump(payments, f, indent=4)
-        total_earned = sum(p['amount'] for p in payments)
-        return True, total_earned
+            json.dump(global_payments, f, indent=4)
     except IOError as e:
-        logger.error(f"Could not write to payments file ({PAYMENTS_FILE}): {e}")
-        return False, 0
+        logger.error(f"Could not write to global payments file ({PAYMENTS_FILE}): {e}")
+        return False, f"Could not write to global payments file: {e}"
+
+    # === 2. Update Customer-specific payments file ===
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        logger.error(f"Customer data file not found for {contact_id} when recording payment.")
+        return False, "Customer data file not found."
+
+    customer_total_paid = 0
+    try:
+        with open(customer_file, "r") as f:
+            customer_data = json.load(f)
+
+        if "payments" not in customer_data:
+            customer_data["payments"] = []
+
+        new_customer_payment = {
+            "amount": amount,
+            "date": datetime.utcnow().isoformat()
+        }
+        customer_data["payments"].append(new_customer_payment)
+        
+        customer_total_paid = sum(p['amount'] for p in customer_data["payments"])
+        customer_data["total_paid"] = customer_total_paid
+
+        with open(customer_file, "w") as f:
+            json.dump(customer_data, f, indent=4)
+
+    except (IOError, json.JSONDecodeError) as e:
+        logger.error(f"Error updating customer file for {contact_id}: {e}")
+        return False, f"Error updating customer file: {e}"
+
+    # === 3. Return success and relevant totals ===
+    global_total_earned = sum(p['amount'] for p in global_payments)
+
+    result = {
+        "global_total": global_total_earned,
+        "customer_total": customer_total_paid
+    }
+    return True, result
 
 def get_total_earned() -> float:
     """Calculates the total amount earned from the payments.json file."""
@@ -1022,46 +1063,42 @@ async def sync(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
         logger.error(f"Failed to sync command tree: {e}")
 
-@tree.command(name="paid", description="Records a payment and prompts to delete the channel.")
-@app_commands.describe(amount="The amount that was paid by the client.")
+@tree.command(name="paid", description="Records a payment for the customer and marks the job as complete.")
+@app_commands.describe(amount="The amount that was paid.")
 async def paid(interaction: discord.Interaction, amount: float):
     await interaction.response.defer(ephemeral=True)
 
-    # 1. Find the contact ID associated with this channel
-    contact_id = None
-    if os.path.exists(CUSTOMER_DATA_DIR):
-        for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
-            customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
-            if os.path.isdir(customer_path):
-                customer_file = os.path.join(customer_path, "customer_data.json")
-                if os.path.exists(customer_file):
-                    try:
-                        with open(customer_file, "r") as f:
-                            data = json.load(f)
-                        if data.get("discord_channel_id") == interaction.channel.id:
-                            contact_id = data.get("client_id")
-                            break
-                    except (json.JSONDecodeError, IOError):
-                        continue
-    
+    contact_id = get_ghl_contact_id(interaction.channel.topic) # Assuming channel topic contains the phone number
     if not contact_id:
-        await interaction.followup.send("❌ This command can only be used in a customer-specific channel.")
+        await interaction.followup.send("❌ Could not determine contact ID from channel topic. Please ensure the channel is associated with a customer.", ephemeral=True)
         return
 
-    # 2. Record the payment in payments.json
     success, result = record_payment(contact_id, amount, interaction.channel.id)
 
     if success:
-        new_total = result
+        totals = result
+        global_total = totals["global_total"]
+        customer_total = totals["customer_total"]
+        
+        customer_name = "Unknown"
+        customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+        try:
+            with open(customer_file, "r") as f:
+                data = json.load(f)
+            p_info = data.get("personal_info", {})
+            customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+        except Exception:
+            pass
+
         embed = discord.Embed(
             title="✅ Payment Recorded",
-            description=f"✅ Payment of `${amount:,.2f}` recorded for the customer.",
+            description=f"Payment of `${amount:,.2f}` recorded for **{customer_name}**.",
             color=discord.Color.green()
         )
-        embed.add_field(name="New Total Earned", value=f"${new_total:,.2f}", inline=False)
-        embed.set_footer(text=f"Data created on: {datetime.utcnow().isoformat()}")
-        
-        # Create the view with a delete button
+        embed.add_field(name="Total Paid by this Customer", value=f"${customer_total:,.2f}", inline=True)
+        embed.add_field(name="Server Total Earned", value=f"${global_total:,.2f}", inline=True)
+        embed.set_footer(text=f"Contact ID: {contact_id}")
+
         view = DeleteChannelView(author_id=interaction.user.id)
         await interaction.channel.send(embed=embed, view=view)
         await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
@@ -1087,6 +1124,357 @@ async def on_ready():
     
     logger.info(f'Logged in as {client.user} (ID: {client.user.id})')
     logger.info('------')
+
+# --- FastAPI Web Server ---
+class CustomerCreateRequest(BaseModel):
+    first_name: str
+    last_name: str
+    phone: str
+    address: str
+    city: str
+    service_details: str
+    quote_amount: float
+    service_date: str
+    follow_up_date: str
+
+@app.post("/customer/create")
+async def handle_customer_create(request: CustomerCreateRequest):
+    """
+    Endpoint to create a new customer, GHL contact, and Discord channel.
+    This is the main entry point from an external system (e.g., a webhook).
+    """
+    logger.info(f"Received request to create customer: {request.first_name} {request.last_name}")
+
+    # 1. Create contact in GoHighLevel
+    ghl_contact_id = create_ghl_contact(
+        first_name=request.first_name,
+        last_name=request.last_name,
+        phone=request.phone,
+        address=request.address,
+        city=request.city
+    )
+    if not ghl_contact_id:
+        logger.error("Failed to create GHL contact.")
+        raise HTTPException(status_code=500, detail="Failed to create GHL contact.")
+
+    # 2. Create local customer data file
+    customer_data = create_customer_data_file(
+        client_id=ghl_contact_id,
+        personal_info={
+            "first_name": request.first_name,
+            "last_name": request.last_name,
+            "phone_number": request.phone,
+            "address": request.address,
+            "city": request.city,
+            "email": "" # Assuming email is not provided in this flow
+        },
+        service_history=[{
+            "service_date": request.service_date,
+            "service_details": request.service_details,
+            "quote_amount": request.quote_amount,
+            "follow_up_date": request.follow_up_date,
+            "status": "pending",
+            "paid_amount": 0,
+            "completed_date": None
+        }]
+    )
+    if not customer_data:
+        logger.error(f"Failed to create local data file for GHL ID {ghl_contact_id}")
+        raise HTTPException(status_code=500, detail="Failed to create local customer data file.")
+
+    # 3. Create Discord channel
+    channel_name = f"{request.first_name}-{request.last_name}-{ghl_contact_id[-4:]}".lower()
+    try:
+        channel = await create_discord_channel_for_customer(
+            channel_name=channel_name,
+            contact_id=ghl_contact_id,
+            customer_data=customer_data
+        )
+        logger.info(f"Successfully created Discord channel #{channel.name} for {ghl_contact_id}")
+    except Exception as e:
+        logger.error(f"Failed to create Discord channel for {ghl_contact_id}: {e}")
+        # Even if channel creation fails, don't fail the whole request
+        # The channel can be created manually later if needed.
+        pass
+        
+    return {"status": "success", "ghl_contact_id": ghl_contact_id}
+
+
+# This is a placeholder for a jobs endpoint if you need it.
+@app.get("/jobs")
+async def get_jobs():
+    return {"jobs": "This is a placeholder for a jobs endpoint."}
+
+
+# --- Discord Bot Setup ---
+class MyClient(discord.Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pending_uploads = {}
+        self.uploaded_images = {}
+
+    async def on_ready(self):
+        # Sync commands to a specific guild for faster updates.
+        # This assumes the bot is primarily used in one server.
+        if self.guilds:
+            guild = self.guilds[0]
+            tree.copy_global_to(guild=guild)
+            try:
+                await tree.sync(guild=guild)
+                logger.info(f"✅ Command tree synced to guild: {guild.name} (ID: {guild.id})")
+            except Exception as e:
+                logger.error(f"Failed to sync commands to guild {guild.id}: {e}")
+        else:
+            logger.warning("Bot is not in any guilds. Did not sync command tree.")
+        
+        logger.info(f'Logged in as {self.user} (ID: {self.user.id})')
+        logger.info('------')
+
+    async def on_message(self, message):
+        # Don't respond to bot messages
+        if message.author == self.user:
+            return
+        
+        # Check if this channel has pending image uploads
+        if hasattr(self, 'pending_uploads') and message.channel.id in self.pending_uploads:
+            upload_info = self.pending_uploads[message.channel.id]
+            
+            # Check if the message has image attachments
+            image_attachments = [att for att in message.attachments if att.content_type and att.content_type.startswith('image/')]
+            
+            if image_attachments:
+                contact_id = upload_info['contact_id']
+                image_type = upload_info['type']
+                
+                # Download and store the images
+                await message.add_reaction('⏳')  # Processing reaction
+                
+                try:
+                    downloaded_files = await download_and_store_images(image_attachments, contact_id, image_type)
+                    
+                    if downloaded_files:
+                        await message.add_reaction('✅')  # Success reaction
+                        
+                        service_apt_num = downloaded_files[0]['service_appointment'] if downloaded_files else 'Unknown'
+                        success_msg = f"✅ Successfully saved {len(downloaded_files)} {image_type.upper()} image(s) for contact `{contact_id}` (Service Appointment #{service_apt_num})"
+                        
+                        # Store the uploaded files info for potential dashboard sync
+                        if not hasattr(self, 'uploaded_images'):
+                            self.uploaded_images = {}
+                        
+                        service_key = f"{contact_id}_service_{service_apt_num}"
+                        if service_key not in self.uploaded_images:
+                            self.uploaded_images[service_key] = {'before': [], 'after': []}
+                        
+                        self.uploaded_images[service_key][image_type] = downloaded_files
+                        
+                        # Check if we have both before and after images for this service
+                        before_files = self.uploaded_images[service_key].get('before', [])
+                        after_files = self.uploaded_images[service_key].get('after', [])
+                        
+                        # If it's "after" images, also upload to Vercel and send link to client
+                        if image_type == 'after':
+                            try:
+                                gallery_url = await upload_images_to_vercel(contact_id, downloaded_files, service_apt_num)
+                                await send_gallery_link_to_client(contact_id, gallery_url, service_apt_num)
+                                success_msg += f"\n📱 Gallery link sent to client: {gallery_url}"
+                            except Exception as e:
+                                success_msg += f"\n⚠️ Images saved locally, but failed to upload to Vercel: {e}"
+                            
+                            # Try to sync to dashboard if we have both before and after images
+                            if before_files and after_files:
+                                try:
+                                    sync_success, sync_result = await sync_service_to_dashboard(
+                                        contact_id, service_apt_num, before_files, after_files
+                                    )
+                                    if sync_success:
+                                        success_msg += f"\n🔄 Service synced to customer dashboard"
+                                        # Clean up the stored images since sync is complete
+                                        del self.uploaded_images[service_key]
+                                    else:
+                                        success_msg += f"\n⚠️ Dashboard sync failed: {sync_result}"
+                                except Exception as e:
+                                    success_msg += f"\n⚠️ Dashboard sync error: {e}"
+                        
+                        await message.reply(success_msg)
+                    else:
+                        await message.add_reaction('❌')  # Error reaction
+                        await message.reply("❌ No images were successfully downloaded.")
+                    
+                except Exception as e:
+                    await message.add_reaction('❌')  # Error reaction
+                    await message.reply(f"❌ Error processing images: {e}")
+                
+                # Clear the pending upload for this channel
+                del self.pending_uploads[message.channel.id]
+
+    async def on_app_command_completion(self, interaction: discord.Interaction, command: app_commands.Command):
+        if command.name == "hello":
+            await interaction.response.send_message(f"Hello, {interaction.user.mention}!")
+        elif command.name == "update":
+            # Find the contact ID associated with this channel
+            contact_id = None
+            
+            # Search through all customer directories to find which one has this channel ID
+            if os.path.exists(CUSTOMER_DATA_DIR):
+                for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
+                    customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
+                    if os.path.isdir(customer_path):
+                        customer_file = os.path.join(customer_path, "customer_data.json")
+                        if os.path.exists(customer_file):
+                            try:
+                                with open(customer_file, "r") as f:
+                                    data = json.load(f)
+                                
+                                # Check if this channel ID matches
+                                if data.get("discord_channel_id") == interaction.channel.id:
+                                    contact_id = data.get("client_id")
+                                    break
+                            except (json.JSONDecodeError, IOError):
+                                continue
+            
+            if not contact_id:
+                await interaction.response.send_message(
+                    "❌ This channel is not associated with any customer. "
+                    "The `/update` command can only be used in customer-specific channels created by the bot.",
+                    ephemeral=True
+                )
+                return
+            
+            # Create the view with Before/After buttons
+            view = UpdateImageView(contact_id)
+            
+            # Get customer name for display
+            customer_name = "Unknown"
+            try:
+                customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+                with open(customer_file, "r") as f:
+                    data = json.load(f)
+                p_info = data.get("personal_info", {})
+                customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+            except:
+                pass
+            
+            embed = discord.Embed(
+                title="📸 Image Upload",
+                description=f"**Customer:** {customer_name}\n**Contact ID:** `{contact_id}`\n\nChoose whether you want to upload **BEFORE** or **AFTER** images:",
+                color=discord.Color.blue()
+            )
+            embed.add_field(
+                name="📸 Before", 
+                value="Upload images taken before the service", 
+                inline=True
+            )
+            embed.add_field(
+                name="✨ After", 
+                value="Upload images taken after the service\n*(Will also send link to client)*", 
+                inline=True
+            )
+            
+            await interaction.response.send_message(embed=embed, view=view)
+        elif command.name == "customers":
+            if not os.path.exists(CUSTOMER_DATA_DIR):
+                await interaction.response.send_message("Customer data directory not found.")
+                return
+            customer_ids = [d for d in os.listdir(CUSTOMER_DATA_DIR) if os.path.isdir(os.path.join(CUSTOMER_DATA_DIR, d))]
+            if not customer_ids:
+                await interaction.response.send_message("No customers found.")
+                return
+            id_list = "\n".join([f"- `{cid}`" for cid in customer_ids])
+            message = f"**Total Customers: {len(customer_ids)}**\n{id_list}"
+            await interaction.response.send_message(message)
+        elif command.name == "customer":
+            client_id = interaction.data.get("options", [{}])[0].get("value")
+            if not client_id:
+                await interaction.response.send_message("No client_id provided in the command.", ephemeral=True)
+                return
+            customer_dir = os.path.join(CUSTOMER_DATA_DIR, client_id)
+            customer_file = os.path.join(customer_dir, "customer_data.json")
+            if not os.path.exists(customer_file):
+                await interaction.response.send_message(f"No data found for client ID: `{client_id}`")
+                return
+            try:
+                with open(customer_file, "r") as f:
+                    data = json.load(f)
+            except Exception as e:
+                await interaction.response.send_message(f"Error reading customer data: {e}")
+                return
+            embed = discord.Embed(
+                title=f"Customer Details: {data['personal_info']['first_name']} {data['personal_info']['last_name']}",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="GHL Contact ID", value=f"`{data['client_id']}`", inline=False)
+            embed.add_field(name="Email", value=data['personal_info']['email'], inline=True)
+            embed.add_field(name="Phone", value=data['personal_info']['phone_number'], inline=True)
+            embed.add_field(name="Address", value=data['personal_info']['address'], inline=False)
+            if data.get("service_history"):
+                embed.add_field(name="--- Last Service ---", value="", inline=False)
+                last_service = data["service_history"][-1]
+                embed.add_field(name="Date", value=last_service['service_date'], inline=True)
+                embed.add_field(name="Quote", value=f"${last_service['quote_amount']:.2f}", inline=True)
+                embed.add_field(name="Follow-up Date", value=last_service['follow_up_date'], inline=True)
+                embed.add_field(name="Details", value=last_service['service_details'], inline=False)
+            embed.set_footer(text=f"Data created on: {data['created_at']}")
+            await interaction.response.send_message(embed=embed)
+        elif command.name == "sync":
+            if interaction.user.id != 245625124191338496: # Replace with your actual user ID for security
+                await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+                return
+                
+            await interaction.response.defer(ephemeral=True)
+            try:
+                if interaction.guild:
+                    tree.copy_global_to(guild=interaction.guild)
+                    await tree.sync(guild=interaction.guild)
+                    await interaction.followup.send("✅ Command tree synced to this server.", ephemeral=True)
+                    logger.info(f"Command tree synced manually to guild {interaction.guild.id}.")
+                else:
+                    await tree.sync()
+                    await interaction.followup.send("✅ Command tree synced globally.", ephemeral=True)
+                    logger.info("Command tree synced manually globally.")
+            except Exception as e:
+                await interaction.followup.send(f"❌ Failed to sync command tree: {e}", ephemeral=True)
+                logger.error(f"Failed to sync command tree: {e}")
+        elif command.name == "paid":
+            await interaction.response.defer(ephemeral=True)
+
+            contact_id = get_ghl_contact_id(interaction.channel.topic) # Assuming channel topic contains the phone number
+            if not contact_id:
+                await interaction.followup.send("❌ Could not determine contact ID from channel topic. Please ensure the channel is associated with a customer.", ephemeral=True)
+                return
+
+            success, result = record_payment(contact_id, amount, interaction.channel.id)
+
+            if success:
+                totals = result
+                global_total = totals["global_total"]
+                customer_total = totals["customer_total"]
+                
+                customer_name = "Unknown"
+                customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+                try:
+                    with open(customer_file, "r") as f:
+                        data = json.load(f)
+                    p_info = data.get("personal_info", {})
+                    customer_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+                except Exception:
+                    pass
+
+                embed = discord.Embed(
+                    title="✅ Payment Recorded",
+                    description=f"Payment of `${amount:,.2f}` recorded for **{customer_name}**.",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="Total Paid by this Customer", value=f"${customer_total:,.2f}", inline=True)
+                embed.add_field(name="Server Total Earned", value=f"${global_total:,.2f}", inline=True)
+                embed.set_footer(text=f"Contact ID: {contact_id}")
+
+                view = DeleteChannelView(author_id=interaction.user.id)
+                await interaction.channel.send(embed=embed, view=view)
+                await interaction.followup.send("✅ Payment recorded.", ephemeral=True)
+            else:
+                error_message = result
+                await interaction.followup.send(f"❌ Failed to record payment: {error_message}", ephemeral=True)
 
 # This is the entry point for running the bot.
 if __name__ == "__main__":
