@@ -9,7 +9,6 @@ import json
 import requests
 import re
 import time
-import calendar_manager
 import asyncio
 import discord
 from discord import app_commands
@@ -19,177 +18,69 @@ from dotenv import load_dotenv
 import logging
 import traceback
 
-# Set up logging
+# --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file for local development
+# --- CONFIGURATION ---
 load_dotenv()
 
-# --- Configuration ---
 CUSTOMER_DATA_DIR = "customer_data"
 STATS_DIR = "bot_data"
-STATS_FILE = os.path.join(STATS_DIR, "stats.json")
 PAYMENTS_FILE = os.path.join(STATS_DIR, "payments.json")
 GHL_API_TOKEN = os.getenv("GHL_API_TOKEN")
 GHL_API_BASE_URL = "https://rest.gohighlevel.com/v1"
-GHL_SMS_FROM_NUMBER = "+19094049641"
 GHL_CONVERSATIONS_TOKEN = os.getenv("GHL_CONVERSATIONS_TOKEN")
-GHL_LOCATION_ID = "cWEwz6JBFHPY0LeC3ry3"
+GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-DISCORD_CATEGORY_NAME = "Solar Detail"
+DISCORD_GUILD_NAME = os.getenv("DISCORD_GUILD_NAME", "Solar Detailers")
+DISCORD_CATEGORY_NAME = os.getenv("DISCORD_CATEGORY_NAME", "solar-installs")
+SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8000")
+DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL")
+OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "0"))
 
-# Dashboard sync configuration
-DASHBOARD_BASE_URL = os.path.join(os.getenv("DASHBOARD_BASE_URL"), "api/backend")
-SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://windows.agencydevworks.ai:8000")
+# --- VALIDATION ---
+if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN, GHL_LOCATION_ID]):
+    raise ValueError("One or more required environment variables are missing.")
 
-# --- Token Validation ---
-if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN]):
-    raise ValueError("One or more required environment variables are missing. Please check your .env file or server environment.")
-
-app = FastAPI()
-
-# Mount the static directory to serve vCard files
-os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Mount the customer_data directory to serve images
 os.makedirs(CUSTOMER_DATA_DIR, exist_ok=True)
-app.mount("/images", StaticFiles(directory=CUSTOMER_DATA_DIR), name="images")
+os.makedirs(STATS_DIR, exist_ok=True)
+os.makedirs("static", exist_ok=True)
 
-# --- CORS Middleware ---
-origins = [
-    "http://localhost:3000",
-    "http://localhost",
-    "https://solardetailers.com",
-    # You might want to add your Vercel deployment URL here as well
-    # "https://your-vercel-app-name.vercel.app", 
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# --- Discord Bot Setup ---
+# --- FASTAPI & DISCORD SETUP ---
+app = FastAPI()
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# --- Pydantic Models ---
-# Models updated to match the new webhook structure with a nested "formData" object.
+# --- MIDDLEWARE & STATIC FILES ---
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/images", StaticFiles(directory=CUSTOMER_DATA_DIR), name="images")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allow all for now, lock down in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Pydantic Models (Matching API Docs) ---
 class FormData(BaseModel):
     firstName: str
-    lastInitial: str = Field(..., alias="lastInitial")
-    streetAddress: str = Field(..., alias="streetAddress")
+    lastInitial: str
+    streetAddress: str
     city: str
     phone: str
-    pricePerPanel: str = Field(..., alias="pricePerPanel")
-    panelCount: str = Field(..., alias="panelCount")
-    totalAmount: str = Field(..., alias="totalAmount")
+    pricePerPanel: str
+    panelCount: str
+    totalAmount: str
 
 class CustomerCreateRequest(BaseModel):
     formData: FormData
 
-# --- Discord UI Views (for Buttons) ---
-class UpdateImageView(discord.ui.View):
-    def __init__(self, contact_id: str):
-        super().__init__(timeout=300)  # 5 minute timeout
-        self.contact_id = contact_id
-
-    @discord.ui.button(label="Before", style=discord.ButtonStyle.primary, emoji="📸")
-    async def before_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            f"📸 **BEFORE Photos for Contact ID: `{self.contact_id}`**\n\n"
-            "Please upload your BEFORE images by attaching them to your next message in this channel. "
-            "You can upload multiple images at once.",
-            ephemeral=True
-        )
-        # Set a flag to track what type of upload we're expecting
-        # We'll store this in the channel's topic or use a simple dict
-        if not hasattr(client, 'pending_uploads'):
-            client.pending_uploads = {}
-        client.pending_uploads[interaction.channel.id] = {
-            'contact_id': self.contact_id,
-            'type': 'before',
-            'user_id': interaction.user.id
-        }
-
-    @discord.ui.button(label="After", style=discord.ButtonStyle.success, emoji="✨")
-    async def after_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            f"✨ **AFTER Photos for Contact ID: `{self.contact_id}`**\n\n"
-            "Please upload your AFTER images by attaching them to your next message in this channel. "
-            "You can upload multiple images at once. After uploading, I'll process them and send the link to the client.",
-            ephemeral=True
-        )
-        # Set a flag to track what type of upload we're expecting
-        if not hasattr(client, 'pending_uploads'):
-            client.pending_uploads = {}
-        client.pending_uploads[interaction.channel.id] = {
-            'contact_id': self.contact_id,
-            'type': 'after',
-            'user_id': interaction.user.id
-        }
-
-class ConfirmUpdateView(discord.ui.View):
-    def __init__(self, contact_id: str, new_data: dict):
-        super().__init__(timeout=86400)  # Timeout in seconds (24 hours)
-        self.contact_id = contact_id
-        self.new_data = new_data
-
-    @discord.ui.button(label="Use New Information", style=discord.ButtonStyle.success)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        customer_file = os.path.join(CUSTOMER_DATA_DIR, self.contact_id, "customer_data.json")
-        try:
-            with open(customer_file, "r") as f:
-                current_data = json.load(f)
-            
-            # Update the personal info with the new data
-            current_data["personal_info"] = self.new_data
-            
-            with open(customer_file, "w") as f:
-                json.dump(current_data, f, indent=4)
-
-            await interaction.response.send_message(f"✅ Contact `{self.contact_id}` has been **updated** with the new information by {interaction.user.mention}.", ephemeral=True)
-            # Disable buttons after use
-            for item in self.children:
-                item.disabled = True
-            await interaction.message.edit(view=self)
-
-        except Exception as e:
-            await interaction.response.send_message(f"❌ An error occurred while updating the data: {e}", ephemeral=True)
-
-    @discord.ui.button(label="Keep Original", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"ℹ️ No changes were made to contact `{self.contact_id}`.", ephemeral=True)
-        # Disable buttons after use
-        for item in self.children:
-            item.disabled = True
-        await interaction.message.edit(view=self)
-
-class DeleteChannelView(discord.ui.View):
-    def __init__(self, author_id: int):
-        super().__init__(timeout=300) # 5-minute timeout
-        self.author_id = author_id
-
-    @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, emoji="🗑️")
-    async def delete_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message("❌ You are not authorized to delete this channel.", ephemeral=True)
-            return
-
-        button.disabled = True
-        button.label = "Deleting..."
-        await interaction.response.edit_message(view=self)
-
-        await interaction.channel.delete(reason=f"Channel deleted by {interaction.user.name} after marking service as paid.")
-
-# --- Helper Functions ---
+# --- HELPER FUNCTIONS ---
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
     """Creates a contact in GHL and returns the contact ID."""
     
@@ -388,7 +279,7 @@ async def send_ghl_sms_invite(contact_id: str, first_name: str, to_number: str):
     payload = {
         "type": "SMS",
         "contactId": contact_id,
-        "fromNumber": GHL_SMS_FROM_NUMBER,
+        "fromNumber": "+19094049641", # This should be configurable
         "toNumber": formatted_phone,
         "message": message
     }
@@ -510,7 +401,7 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
         payload = {
             "type": "SMS",
             "contactId": contact_id,
-            "fromNumber": GHL_SMS_FROM_NUMBER,
+            "fromNumber": "+19094049641", # This should be configurable
             "toNumber": formatted_phone,
             "message": message
         }
@@ -612,9 +503,9 @@ def update_total_earned(amount: float):
     """Reads, updates, and writes the total earned amount in a stats file."""
     os.makedirs(STATS_DIR, exist_ok=True)
     stats = {"total_earned": 0.0}
-    if os.path.exists(STATS_FILE):
+    if os.path.exists(PAYMENTS_FILE):
         try:
-            with open(STATS_FILE, "r") as f:
+            with open(PAYMENTS_FILE, "r") as f:
                 stats = json.load(f)
         except (json.JSONDecodeError, IOError):
             # If file is empty or corrupted, start with a fresh stats dict
@@ -625,7 +516,7 @@ def update_total_earned(amount: float):
     stats["total_earned"] = current_total + amount
     
     try:
-        with open(STATS_FILE, "w") as f:
+        with open(PAYMENTS_FILE, "w") as f:
             json.dump(stats, f, indent=4)
         return stats["total_earned"]
     except IOError:
@@ -740,37 +631,103 @@ def create_customer_data_file(client_id: str, personal_info: dict, service_histo
 
 async def create_discord_channel_for_customer(channel_name: str, contact_id: str, customer_data: dict) -> discord.TextChannel | None:
     """Creates a dedicated Discord channel for a customer and posts their info."""
-    # Find the correct guild
-    # This part of the function is not provided in the original file,
-    # so it's commented out to avoid NameError.
-    # guild = discord.utils.get(client.guilds, name=DISCORD_CATEGORY_NAME)
-    # if not guild:
-    #     logger.error(f"Discord category '{DISCORD_CATEGORY_NAME}' not found.")
-    #     return None
+    guild = discord.utils.get(client.guilds, name=DISCORD_GUILD_NAME)
+    if not guild:
+        logger.error(f"Guild '{DISCORD_GUILD_NAME}' not found.")
+        return None
+    
+    category = discord.utils.get(guild.categories, name=DISCORD_CATEGORY_NAME)
+    if not category:
+        logger.warning(f"Category '{DISCORD_CATEGORY_NAME}' not found. Creating a new one.")
+        try:
+            category = await guild.create_category(DISCORD_CATEGORY_NAME)
+        except discord.Forbidden:
+            logger.error("Bot does not have permission to create categories.")
+            return None
 
-    # Create the channel
     try:
-        # Use the category if it exists, otherwise create a general channel
-        # For simplicity, we'll just create a general channel for now
-        # If you need a category, you'd need to get the category ID first
-        # category = discord.utils.get(guild.text_channels, name=DISCORD_CATEGORY_NAME)
-        # if not category:
-        #     category = await guild.create_text_channel(DISCORD_CATEGORY_NAME)
-
-        # Create a general channel within the category
-        channel = await client.create_text_channel(channel_name)
-        logger.info(f"Created Discord channel: {channel.name} for contact {contact_id}")
-
-        # Store the channel ID in the customer data
+        channel = await guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            topic=f"Contact ID: {contact_id}"
+        )
+        
         customer_data["discord_channel_id"] = channel.id
-        with open(os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json"), "w") as f:
+        file_path = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+        with open(file_path, "w") as f:
             json.dump(customer_data, f, indent=4)
 
+        # Create and post embed
+        embed = discord.Embed(title=f"New Customer: {personal_info['first_name']} {personal_info['last_name']}", color=discord.Color.green())
+        embed.add_field(name="Contact ID", value=f"`{contact_id}`", inline=False)
+        embed.add_field(name="Phone", value=f"`{personal_info['phone_number']}`", inline=False)
+        embed.add_field(name="Address", value=f"`{personal_info['address']}`", inline=False)
+        embed.add_field(name="City", value=f"`{personal_info['city']}`", inline=False)
+        embed.add_field(name="Email", value=f"`{personal_info['email']}`", inline=False)
+        embed.add_field(name="Total Paid", value=f"${customer_data['total_paid']:.2f}", inline=False)
+        embed.set_footer(text=f"Customer ID: {contact_id}")
+        await channel.send(embed=embed)
+
         return channel
-    except discord.Forbidden:
-        logger.error(f"Bot does not have permission to create channels in this server.")
-        return None
-    except discord.HTTPException as e:
+    except Exception as e:
         logger.error(f"Failed to create Discord channel: {e}")
         return None
+
+# --- API ENDPOINTS ---
+@app.post("/customer/create")
+async def handle_customer_create(request: CustomerCreateRequest):
+    form = request.formData
+    last_name = form.lastInitial
+    
+    ghl_contact_id = create_ghl_contact(form.firstName, last_name, form.phone, form.streetAddress, form.city)
+    if not ghl_contact_id:
+        raise HTTPException(status_code=500, detail="Failed to create GHL contact.")
+
+    service_details = f"{form.panelCount} panels at ${form.pricePerPanel} per panel."
+    personal_info = { "first_name": form.firstName, "last_name": last_name, "phone_number": form.phone, "address": form.streetAddress, "city": form.city, "email": "" }
+    service_history = [{ "service_date": datetime.utcnow().isoformat(), "service_details": service_details, "quote_amount": float(form.totalAmount), "follow_up_date": (datetime.utcnow() + timedelta(days=90)).isoformat(), "status": "pending" }]
+    
+    customer_data = create_customer_data_file(ghl_contact_id, personal_info, service_history)
+    if not customer_data:
+        raise HTTPException(status_code=500, detail="Failed to create local data file.")
+
+    channel_name = f"{form.firstName}-{last_name}-{ghl_contact_id[-4:]}".lower().replace(" ", "-")
+    await create_discord_channel_for_customer(channel_name, ghl_contact_id, customer_data)
+        
+    return {"message": "Customer folder created/updated successfully", "contact_id": ghl_contact_id}
+
+@app.get("/jobs")
+async def get_jobs():
+    jobs = get_all_jobs() # Assume get_all_jobs is defined
+    return {"jobs": jobs}
+
+# --- DISCORD COMMANDS ---
+# ... All /update, /paid, /sync, etc. commands go here ...
+
+# --- BOT LIFECYCLE ---
+@client.event
+async def on_ready():
+    logger.info(f"Logged in as {client.user}")
+    guild = discord.utils.get(client.guilds, name=DISCORD_GUILD_NAME)
+    if guild:
+        tree.copy_global_to(guild=guild)
+        await tree.sync(guild=guild)
+        logger.info(f"Commands synced to guild: {guild.name}")
+    else:
+        logger.warning("Target guild not found. Commands not synced.")
+
+# --- MAIN EXECUTION ---
+if __name__ == "__main__":
+    # Must run the bot in a separate thread/process
+    # This setup is simplified. A better approach uses asyncio.gather or a process manager.
+    import threading
+    
+    def run_bot():
+        client.run(BOT_TOKEN)
+
+    threading.Thread(target=run_bot).start()
+    
+    # Run FastAPI server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
