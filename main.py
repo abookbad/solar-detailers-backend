@@ -92,37 +92,8 @@ class FormData(BaseModel):
     panelCount: str = Field(..., alias="panelCount")
     totalAmount: str = Field(..., alias="totalAmount")
 
-class VercelWebhookPayload(BaseModel):
+class CustomerCreateRequest(BaseModel):
     formData: FormData
-    # selectedDate and selectedTime are received but not used currently.
-
-class AppointmentBooking(BaseModel):
-    contact_id: str
-    start_time_iso: str
-
-class MembershipUpgrade(BaseModel):
-    contactId: str
-    planBasis: int  # e.g., 3, 6, 12 months
-    pricePerBasis: float
-
-class ContactUpdatePayload(BaseModel):
-    # Define the fields the user can update from the frontend
-    firstName: str
-    lastName: str
-    email: str = ""  # Make optional with default empty string
-    # phone number is not included as it's the primary key for lookup
-    address: str = ""  # Make optional with default empty string
-
-class StripeCustomerPayload(BaseModel):
-    stripe_customer_id: str
-    contact_id: str
-
-class MembershipStatusUpdate(BaseModel):
-    contactId: str
-    status: str = None  # "active", "cancelled", "invited"
-    payment_method: str = None  # "cash", "stripe", etc.
-    plan_basis_months: int = None
-    quoted_price: float = None
 
 # --- Discord UI Views (for Buttons) ---
 class UpdateImageView(discord.ui.View):
