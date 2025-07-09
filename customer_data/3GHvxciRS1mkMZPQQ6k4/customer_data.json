@@ -23,5 +23,6 @@
     },
     "stripe_customer_id": "",
     "created_at": "2025-07-03T23:17:55.052840",
-    "discord_channel_id": 1390471650566340709
+    "discord_channel_id": 1390471650566340709,
+    "archived_in_thread_id": 1392406950511120454
 }

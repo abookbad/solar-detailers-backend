@@ -1,0 +1,28 @@
+{
+    "client_id": "nlgg9edm9qUtwS9lXpSm",
+    "personal_info": {
+        "first_name": "Juliet",
+        "last_name": "Monwell",
+        "email": "",
+        "phone_number": "3235282866",
+        "address": "2909 Garfield Ave, Ontario"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-09T07:13:07.928659",
+            "quote_amount": 300.0,
+            "service_details": "30 panels at $10 per panel.",
+            "follow_up_date": "2025-10-07T07:13:07.928659"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-09T07:13:07.928690",
+    "discord_channel_id": 1392403181769855048,
+    "archived_in_thread_id": 1392406899890065478
+}

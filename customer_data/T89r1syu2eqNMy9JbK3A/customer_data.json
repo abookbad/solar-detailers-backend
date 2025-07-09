@@ -1,0 +1,27 @@
+{
+    "client_id": "T89r1syu2eqNMy9JbK3A",
+    "personal_info": {
+        "first_name": "Juan",
+        "last_name": "M",
+        "email": "",
+        "phone_number": "9095381622",
+        "address": "2020 S Lemon Ave, Ontario"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-09T07:12:36.705195",
+            "quote_amount": 275.0,
+            "service_details": "25 panels at $11 per panel.",
+            "follow_up_date": "2025-10-07T07:12:36.705195"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-09T07:12:36.705254",
+    "discord_channel_id": 1392403051066822747
+}
