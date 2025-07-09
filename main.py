@@ -566,22 +566,11 @@ async def download_and_store_images(attachments, contact_id: str, image_type: st
     
     return downloaded_files
 
-async def upload_images_to_vercel(contact_id: str, image_files: list):
-    """Uploads images to Vercel and returns the gallery URL."""
-    # This is a placeholder for the Vercel upload logic
-    # You'll need to implement the actual Vercel API call here
-    
-    # For now, return a placeholder URL
-    # Replace this with actual Vercel upload logic
-    gallery_url = f"https://your-vercel-app.vercel.app/gallery/{contact_id}"
-    
-    return gallery_url
-
-async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service_apt_num: int = 1):
+async def send_gallery_link_to_client(contact_id: str, service_apt_num: int):
     """Sends the gallery link to the client via SMS."""
     customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
     if not os.path.exists(customer_file):
-        return False
+        return False, "Customer file not found."
     
     try:
         with open(customer_file, "r") as f:
@@ -592,7 +581,7 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
         phone_number = p_info.get("phone_number", "")
         
         if not phone_number:
-            return False
+            return False, "Phone number not found for contact."
         
         # Format the phone number correctly
         cleaned_phone = re.sub(r'\D', '', phone_number)
@@ -600,8 +589,8 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
             cleaned_phone = '1' + cleaned_phone
         formatted_phone = f"+{cleaned_phone}"
         
-        # Use the service gallery URL format
-        service_gallery_url = f"https://your-domain.com/service-gallery/{contact_id}/{service_apt_num}"
+        # Use the correct service gallery URL format
+        service_gallery_url = f"https://solardetailers.com/service-gallery/{contact_id}/{service_apt_num}"
         
         message = (
             f"Hi {first_name}! 📸\n\n"
@@ -627,10 +616,18 @@ async def send_gallery_link_to_client(contact_id: str, gallery_url: str, service
 
         response = requests.post("https://services.leadconnectorhq.com/conversations/messages", headers=headers, json=payload)
         response.raise_for_status()
-        return True
+        return True, service_gallery_url
         
+    except requests.exceptions.RequestException as e:
+        error_details = str(e)
+        if hasattr(e, 'response') and e.response:
+            try:
+                error_details = e.response.json()
+            except json.JSONDecodeError:
+                error_details = e.response.text
+        return False, f"Failed to send gallery link SMS: {error_details}"
     except Exception as e:
-        return False
+        return False, f"An unexpected error occurred in send_gallery_link_to_client: {e}"
 
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
@@ -857,11 +854,13 @@ async def on_message(message):
                     # If it's "after" images, also upload to Vercel and send link to client
                     if image_type == 'after':
                         try:
-                            gallery_url = await upload_images_to_vercel(contact_id, downloaded_files)
-                            await send_gallery_link_to_client(contact_id, gallery_url, service_apt_num)
-                            success_msg += f"\n📱 Gallery link sent to client: {gallery_url}"
+                            success, result = await send_gallery_link_to_client(contact_id, service_apt_num)
+                            if success:
+                                success_msg += f"\n📱 Gallery link sent to client: {result}"
+                            else:
+                                success_msg += f"\n⚠️ Images saved locally, but failed to send SMS to client: {result}"
                         except Exception as e:
-                            success_msg += f"\n⚠️ Images saved locally, but failed to upload to Vercel: {e}"
+                            success_msg += f"\n⚠️ An unexpected error occurred while sending client link: {e}"
                         
                         # Try to sync to dashboard if we have both before and after images
                         if before_files and after_files:
@@ -890,11 +889,7 @@ async def on_message(message):
             # Clear the pending upload for this channel
             del client.pending_uploads[message.channel.id]
 
-@tree.command(name="hello", description="Says hello!")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message(f"Hello, {interaction.user.mention}!")
-
-@tree.command(name="update", description="Upload before/after images for the client in this channel")
+@tree.command(name="upload_service_photos", description="Upload before/after images for the client in this channel")
 async def update_images(interaction: discord.Interaction):
     # Find the contact ID associated with this channel
     contact_id = None
@@ -920,7 +915,7 @@ async def update_images(interaction: discord.Interaction):
     if not contact_id:
         await interaction.response.send_message(
             "❌ This channel is not associated with any customer. "
-            "The `/update` command can only be used in customer-specific channels created by the bot.",
+            "The `/upload_service_photos` command can only be used in customer-specific channels created by the bot.",
             ephemeral=True
         )
         return
