@@ -198,6 +198,23 @@ class ConfirmUpdateView(discord.ui.View):
             item.disabled = True
         await interaction.message.edit(view=self)
 
+class ConfirmDeleteChannelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)  # 5 minute timeout
+
+    @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await interaction.channel.delete()
+        except discord.Forbidden:
+            await interaction.response.send_message("I don't have permission to delete this channel.", ephemeral=True)
+        except discord.HTTPException as e:
+            await interaction.response.send_message(f"Failed to delete channel: {e}", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.message.delete()
+
 # --- Helper Functions ---
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
     """Creates a contact in GHL and returns the contact ID."""
@@ -987,6 +1004,10 @@ async def paid(interaction: discord.Interaction, amount: float):
     )
 
     await interaction.response.send_message(response_message)
+
+    # Offer to delete the channel
+    view = ConfirmDeleteChannelView()
+    await interaction.followup.send("Job is paid. Do you want to delete this channel?", view=view)
 
 
 # --- API Endpoints ---
