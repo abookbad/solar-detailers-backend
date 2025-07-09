@@ -889,7 +889,7 @@ async def on_message(message):
             # Clear the pending upload for this channel
             del client.pending_uploads[message.channel.id]
 
-@tree.command(name="upload_service_photos", description="Upload before/after images for the client in this channel")
+@tree.command(name="update", description="Upload before/after images for the client in this channel")
 async def update_images(interaction: discord.Interaction):
     # Find the contact ID associated with this channel
     contact_id = None
@@ -915,7 +915,7 @@ async def update_images(interaction: discord.Interaction):
     if not contact_id:
         await interaction.response.send_message(
             "❌ This channel is not associated with any customer. "
-            "The `/upload_service_photos` command can only be used in customer-specific channels created by the bot.",
+            "The `/update` command can only be used in customer-specific channels created by the bot.",
             ephemeral=True
         )
         return
