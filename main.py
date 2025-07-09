@@ -900,6 +900,95 @@ async def get_customer(interaction: discord.Interaction, client_id: str):
     embed.set_footer(text=f"Data created on: {data['created_at']}")
     await interaction.response.send_message(embed=embed)
 
+@tree.command(name="paid", description="Registers a payment for the customer in this channel.")
+@app_commands.describe(amount="The amount paid by the customer.")
+async def paid(interaction: discord.Interaction, amount: float):
+    """
+    Registers a payment in bot_data/payments.json and reports totals.
+    """
+    contact_id = None
+    # Find contact_id associated with this channel
+    if os.path.exists(CUSTOMER_DATA_DIR):
+        for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
+            customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
+            if os.path.isdir(customer_path):
+                customer_file = os.path.join(customer_path, "customer_data.json")
+                if os.path.exists(customer_file):
+                    try:
+                        with open(customer_file, "r") as f:
+                            data = json.load(f)
+                        if data.get("discord_channel_id") == interaction.channel.id:
+                            contact_id = data.get("client_id")
+                            break
+                    except (json.JSONDecodeError, IOError):
+                        continue
+    
+    if not contact_id:
+        await interaction.response.send_message(
+            "❌ This channel is not associated with any customer. "
+            "The `/paid` command can only be used in customer-specific channels.",
+            ephemeral=True
+        )
+        return
+
+    BOT_DATA_DIR = "bot_data"
+    PAYMENTS_FILE = os.path.join(BOT_DATA_DIR, "payments.json")
+    os.makedirs(BOT_DATA_DIR, exist_ok=True)
+
+    payments = []
+    if os.path.exists(PAYMENTS_FILE):
+        try:
+            with open(PAYMENTS_FILE, "r") as f:
+                content = f.read()
+                if content:
+                    payments = json.loads(content)
+        except (json.JSONDecodeError, IOError):
+            # If file is corrupt or empty, start fresh
+            payments = []
+    
+    # Add the new payment
+    new_payment = {
+        "contact_id": contact_id,
+        "amount": amount,
+        "channel_id": interaction.channel.id,
+        "date": datetime.utcnow().isoformat()
+    }
+    payments.append(new_payment)
+
+    # Write the updated list back to the file
+    try:
+        with open(PAYMENTS_FILE, "w") as f:
+            json.dump(payments, f, indent=4)
+    except IOError as e:
+        await interaction.response.send_message(f"❌ Error writing to payments file: {e}", ephemeral=True)
+        return
+
+    # Calculate totals
+    running_total = sum(p['amount'] for p in payments)
+    
+    now = datetime.utcnow()
+    month_total = sum(p['amount'] for p in payments if datetime.fromisoformat(p['date']).month == now.month and datetime.fromisoformat(p['date']).year == now.year)
+    
+    today = now.date()
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+    
+    week_total = sum(
+        p['amount'] for p in payments 
+        if start_of_week <= datetime.fromisoformat(p['date']).date() <= end_of_week
+    )
+
+    # Format the response message
+    response_message = (
+        f"Registered: ${amount:.2f}\n"
+        f"Week Total: ${week_total:.2f}\n"
+        f"Month Total: ${month_total:.2f}\n"
+        f"Running Total: ${running_total:.2f}"
+    )
+
+    await interaction.response.send_message(response_message)
+
+
 # --- API Endpoints ---
 @app.post("/customer/create")
 async def create_customer(payload: VercelWebhookPayload):
