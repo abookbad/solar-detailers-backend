@@ -204,16 +204,85 @@ class ConfirmDeleteChannelView(discord.ui.View):
 
     @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, emoji="🗑️")
     async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        original_channel = interaction.channel
+        channel_name = original_channel.name
+        ARCHIVE_CHANNEL_ID = 1392404258338373703
+
         try:
-            await interaction.channel.delete()
+            archive_channel = interaction.client.get_channel(ARCHIVE_CHANNEL_ID)
+            if not archive_channel or not isinstance(archive_channel, discord.TextChannel):
+                await interaction.followup.send(f"Archive channel with ID `{ARCHIVE_CHANNEL_ID}` not found or is not a text channel.", ephemeral=True)
+                return
+
+            transcript_parts = []
+            current_part = (
+                f"## Transcript for channel `#{channel_name}`\n"
+                f"**Deleted by:** {interaction.user.mention} on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                f"**Channel ID:** `{original_channel.id}`\n---\n\n"
+            )
+
+            messages = [msg async for msg in original_channel.history(limit=None)]
+            for message in reversed(messages):
+                timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                author_display = message.author.name
+                
+                entry = f"**{author_display}** `({timestamp})`:\n{message.content or ' '}\n"
+
+                if message.embeds:
+                    for i, embed in enumerate(message.embeds):
+                        entry += f"\n> `--- Embed Start ---`\n"
+                        if embed.title: entry += f"> **{embed.title}**\n"
+                        if embed.description: entry += f"> {embed.description.replace(chr(10), chr(10) + '> ')}\n"
+                        for field in embed.fields:
+                            entry += f"> **{field.name}**: {field.value.replace(chr(10), chr(10) + '> ')}\n"
+                        entry += f"> `--- Embed End ---`\n"
+
+                if message.attachments:
+                    for att in message.attachments:
+                        entry += f"📎 **Attachment:** `{att.filename}` - {att.url}\n"
+                
+                entry += "\n"
+
+                if len(current_part) + len(entry) > 1900:
+                    transcript_parts.append(current_part)
+                    current_part = ""
+                
+                current_part += entry
+
+            if current_part:
+                transcript_parts.append(current_part)
+            
+            thread_name = f"archive-{channel_name}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+            if len(thread_name) > 100:
+                thread_name = thread_name[:100]
+
+            thread = await archive_channel.create_thread(name=thread_name)
+            
+            for part in transcript_parts:
+                await thread.send(part, allowed_mentions=discord.AllowedMentions.none())
+            
+            await original_channel.delete(reason=f"Archived to thread {thread.id} by {interaction.user.name}")
+            
+            await thread.send(f"✅ This is a complete archive of the deleted channel `#{channel_name}`.")
+            await interaction.followup.send(f"Channel `#{channel_name}` has been successfully archived in {thread.mention} and deleted.", ephemeral=True)
+
         except discord.Forbidden:
-            await interaction.response.send_message("I don't have permission to delete this channel.", ephemeral=True)
+            await interaction.followup.send(
+                "❌ **Permission Error:** I lack permissions. I need to be able to `Read Message History`, `Manage Channels`, and `Create Threads`.",
+                ephemeral=True
+            )
         except discord.HTTPException as e:
-            await interaction.response.send_message(f"Failed to delete channel: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ **API Error:** {e}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ **An unexpected error occurred:** {e}", ephemeral=True)
+            logger.error(f"Error during channel archival/deletion: {e}\n{traceback.format_exc()}")
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.message.delete()
+        await interaction.response.send_message("Channel deletion cancelled.", ephemeral=True, delete_after=5)
 
 # --- Helper Functions ---
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
