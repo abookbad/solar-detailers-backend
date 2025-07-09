@@ -254,7 +254,7 @@ class ConfirmDeleteChannelView(discord.ui.View):
             if current_part:
                 transcript_parts.append(current_part)
             
-            thread_name = f"archive-{channel_name}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+            thread_name = f"{channel_name}-{datetime.now().strftime('%Y%m%d-%H%M')}"
             if len(thread_name) > 100:
                 thread_name = thread_name[:100]
 
@@ -265,6 +265,18 @@ class ConfirmDeleteChannelView(discord.ui.View):
             
             await original_channel.delete(reason=f"Archived to thread {thread.id} by {interaction.user.name}")
             
+            data_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+            if os.path.exists(data_file):
+                try:
+                    with open(data_file, "r+") as f:
+                        customer_data = json.load(f)
+                        customer_data['archived_in_thread_id'] = thread.id
+                        f.seek(0)
+                        json.dump(customer_data, f, indent=4)
+                        f.truncate()
+                except Exception as e:
+                    logger.error(f"Could not update customer file for {contact_id} with archive thread ID: {e}")
+
             await thread.send(f"✅ This is a complete archive of the deleted channel `#{channel_name}`.")
             await interaction.followup.send(f"Channel `#{channel_name}` has been successfully archived in {thread.mention} and deleted.", ephemeral=True)
 
@@ -790,10 +802,115 @@ async def startup_event():
     # Start the Discord bot in the background
     asyncio.create_task(client.start(BOT_TOKEN))
 
+async def run_one_time_archive_recovery(client):
+    """
+    Scans for customers whose channels were deleted before the archive system
+    was in place and restores their basic info into a new archive thread.
+    This is a one-time operation.
+    """
+    if hasattr(client, 'recovery_has_run') and client.recovery_has_run:
+        return
+    
+    logger.info("Running one-time archive recovery for deleted channels...")
+    
+    ARCHIVE_CHANNEL_ID = 1392404258338373703
+    archive_channel = client.get_channel(ARCHIVE_CHANNEL_ID)
+    if not archive_channel:
+        logger.error(f"Cannot find archive channel {ARCHIVE_CHANNEL_ID}. Aborting recovery.")
+        client.recovery_has_run = True # Don't try again
+        return
+
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        logger.info("Customer data directory not found. No recovery needed.")
+        client.recovery_has_run = True
+        return
+        
+    for contact_id in os.listdir(CUSTOMER_DATA_DIR):
+        customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
+        if not os.path.isdir(customer_dir):
+            continue
+            
+        customer_file = os.path.join(customer_dir, "customer_data.json")
+        if not os.path.exists(customer_file):
+            continue
+            
+        try:
+            with open(customer_file, "r") as f:
+                data = json.load(f)
+            
+            channel_id = data.get("discord_channel_id")
+            is_archived = data.get("archived_in_thread_id")
+
+            if channel_id and not client.get_channel(channel_id) and not is_archived:
+                logger.info(f"Found deleted, un-archived channel for contact {contact_id}. Restoring info...")
+                
+                p_info = data.get("personal_info", {})
+                s_history = data.get("service_history", [])
+                
+                if not p_info or not s_history:
+                    logger.warning(f"Skipping {contact_id} due to missing personal_info or service_history.")
+                    continue
+
+                first_name = p_info.get('first_name', 'unknown')
+                created_date = datetime.fromisoformat(data['created_at'])
+                reconstructed_channel_name = f"{created_date.strftime('%m-%d')}-{first_name.lower()}"
+                
+                thread_name = f"{reconstructed_channel_name} (Restored)"
+                if len(thread_name) > 100:
+                    thread_name = thread_name[:100]
+
+                thread = await archive_channel.create_thread(name=thread_name)
+                
+                full_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+                phone_number = p_info.get('phone_number', 'N/A')
+                full_address = p_info.get('address', 'N/A')
+                apple_maps_link = f"https://maps.apple.com/?q={quote_plus(full_address)}" if full_address != 'N/A' else "N/A"
+                vcard_url = create_vcard_file(contact_id, data)
+
+                s_info = s_history[0]
+                price_per_panel_match = re.search(r'at \$([\d.]+)', s_info.get('service_details', ''))
+                price_per_panel = price_per_panel_match.group(1) if price_per_panel_match else "N/A"
+                num_panels_match = re.search(r'(\d+) panels', s_info.get('service_details', ''))
+                num_panels = num_panels_match.group(1) if num_panels_match else "N/A"
+                total_quoted = s_info.get('quote_amount', 0.0)
+                gallery_link = f"https://solardetailers.com/service-gallery/{contact_id}/1"
+
+                info_message = (
+                    f"## Restored Basic Info for `{full_name}`\n"
+                    f"**Contact ID:** `{contact_id}`\n"
+                    f"**Original Channel Name (est.):** `#{reconstructed_channel_name}`\n"
+                    f"*This is a best-effort restoration of basic data for a channel that was deleted before archival was implemented.*\n---\n\n"
+                    f"**Name**: {full_name}\n"
+                    f"**Phone Number**: {phone_number}\n"
+                    f"**Address**: {full_address}\n\n"
+                    f"**Price Per Panel**: ${price_per_panel} | **# of Panels**: {num_panels}\n"
+                    f"**Quoted**: ${total_quoted:.2f}\n\n"
+                    f"**Add to Contacts**: [Click to Download]({vcard_url})\n"
+                    f"**Apple Maps Link**: {apple_maps_link}\n"
+                    f"**Service Gallery (Apt 1)**: {gallery_link}"
+                )
+
+                await thread.send(info_message, allowed_mentions=discord.AllowedMentions.none())
+                data["archived_in_thread_id"] = thread.id
+                with open(customer_file, "w") as f:
+                    json.dump(data, f, indent=4)
+                
+                logger.info(f"Successfully restored info for {contact_id} in thread {thread.id}")
+                
+        except Exception as e:
+            logger.error(f"Error processing recovery for contact {contact_id}: {e}")
+            logger.error(traceback.format_exc())
+            
+    logger.info("One-time archive recovery scan complete.")
+    client.recovery_has_run = True
+
 # --- Discord Bot Events and Commands ---
 @client.event
 async def on_ready():
     await tree.sync()
+    logger.info(f'{client.user} has connected to Discord!')
+    # Run the one-time recovery task in the background
+    asyncio.create_task(run_one_time_archive_recovery(client))
 
 @client.event
 async def on_message(message):
