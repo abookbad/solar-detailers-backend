@@ -264,6 +264,9 @@ class ConfirmDeleteChannelView(discord.ui.View):
             for part in transcript_parts:
                 await thread.send(part, allowed_mentions=discord.AllowedMentions.none())
             
+            # Send the confirmation message BEFORE deleting the channel to avoid a race condition.
+            await interaction.edit_original_response(content=f"Channel `#{channel_name}` has been successfully archived in {thread.mention}. Deleting original channel...")
+
             await original_channel.delete(reason=f"Archived to thread {thread.id} by {interaction.user.name}")
             
             data_file = os.path.join(CUSTOMER_DATA_DIR, self.contact_id, "customer_data.json")
@@ -279,17 +282,16 @@ class ConfirmDeleteChannelView(discord.ui.View):
                     logger.error(f"Could not update customer file for {self.contact_id} with archive thread ID: {e}")
 
             await thread.send(f"✅ This is a complete archive of the deleted channel `#{channel_name}`.")
-            await interaction.followup.send(f"Channel `#{channel_name}` has been successfully archived in {thread.mention} and deleted.", ephemeral=True)
+            # The final ephemeral message is sent before deletion, so no need for another one here.
 
         except discord.Forbidden:
-            await interaction.followup.send(
-                "❌ **Permission Error:** I lack permissions. I need to be able to `Read Message History`, `Manage Channels`, and `Create Threads`.",
-                ephemeral=True
+            await interaction.edit_original_response(content=
+                "❌ **Permission Error:** I lack permissions. I need to be able to `Read Message History`, `Manage Channels`, and `Create Threads`."
             )
         except discord.HTTPException as e:
-            await interaction.followup.send(f"❌ **API Error:** {e}", ephemeral=True)
+            await interaction.edit_original_response(content=f"❌ **API Error:** {e}")
         except Exception as e:
-            await interaction.followup.send(f"❌ **An unexpected error occurred:** {e}", ephemeral=True)
+            await interaction.edit_original_response(content=f"❌ **An unexpected error occurred:** {e}")
             logger.error(f"Error during channel archival/deletion: {e}\n{traceback.format_exc()}")
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
