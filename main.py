@@ -85,13 +85,16 @@ tree = app_commands.CommandTree(client)
 # Models updated to match the new webhook structure with a nested "formData" object.
 class FormData(BaseModel):
     firstName: str
-    lastName: str
+    lastName: str | None = None
+    lastInitial: str | None = None
     streetAddress: str
     city: str
     phone: str | None = None
-    panelCount: int
-    solarCleaning: bool
-    pigeonMeshing: bool
+    panelCount: int | None = None
+    solarCleaning: bool | None = None
+    pigeonMeshing: bool | None = None
+    pricePerPanel: str | None = None
+    totalAmount: str | None = None
 
 class VercelWebhookPayload(BaseModel):
     formData: FormData
@@ -871,12 +874,16 @@ async def create_customer(payload: VercelWebhookPayload):
     Webhook to create a GHL contact, then create a customer folder using the GHL ID.
     If no phone is provided, a local record is created without GHL integration.
     """
-    logger.info(f"Received new customer payload: {payload.formData.model_dump_json()}")
+    logger.info(f"Received new customer payload: {payload.formData.model_dump_json(exclude_none=True)}")
     try:
         # Extract the actual form data from the nested object
         form_data = payload.formData
         contact_id = None
         cleaned_phone = ""
+
+        # Determine lastName from lastName or lastInitial
+        last_name_to_use = form_data.lastName if form_data.lastName else form_data.lastInitial or ""
+
 
         # Conditionally create GHL contact if a phone number is provided
         if form_data.phone:
@@ -887,7 +894,7 @@ async def create_customer(payload: VercelWebhookPayload):
             logger.info("Phone number provided. Attempting to create GHL contact...")
             contact_id = create_ghl_contact(
                 first_name=form_data.firstName,
-                last_name=form_data.lastName,
+                last_name=last_name_to_use,
                 phone=cleaned_phone,
                 address=form_data.streetAddress,
                 city=form_data.city
@@ -923,16 +930,16 @@ async def create_customer(payload: VercelWebhookPayload):
         full_address = f"{form_data.streetAddress}, {form_data.city}"
         
         service_details_obj = {
-            "solar_cleaning": form_data.solarCleaning,
-            "pigeon_meshing": form_data.pigeonMeshing,
-            "panel_count": form_data.panelCount,
+            "solar_cleaning": form_data.solarCleaning or False,
+            "pigeon_meshing": form_data.pigeonMeshing or False,
+            "panel_count": form_data.panelCount or 0,
         }
 
         customer_data = {
             "client_id": contact_id,  # GHL Contact ID is the main ID
             "personal_info": {
                 "first_name": form_data.firstName,
-                "last_name": form_data.lastName,
+                "last_name": last_name_to_use,
                 "email": "",
                 "phone_number": cleaned_phone,
                 "address": full_address,
