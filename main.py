@@ -318,15 +318,22 @@ def get_ghl_contact_id(phone: str) -> str | None:
     except requests.exceptions.RequestException as e:
         return None
 
-def get_customer_images(contact_id: str):
+async def get_customer_images(contact_id: str):
     """
     Scans the directory for a given contact ID and returns a list of all
     publicly accessible image URLs.
     """
-    contact_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id, "images")
-    if not os.path.isdir(contact_dir):
-        return {"image_urls": []}
+    logger.info(f"Attempting to get images for contact_id: {contact_id}")
+    
+    # Construct the absolute path for robustness
+    contact_dir = os.path.abspath(os.path.join(CUSTOMER_DATA_DIR, contact_id, "images"))
+    logger.info(f"Checking for image directory at absolute path: {contact_dir}")
 
+    if not os.path.isdir(contact_dir):
+        logger.warning(f"Directory not found for contact {contact_id} at path: {contact_dir}")
+        raise HTTPException(status_code=404, detail=f"Image directory not found for contact {contact_id}")
+
+    logger.info(f"Directory found. Scanning for images in: {contact_dir}")
     image_urls = []
     for root, _, files in os.walk(contact_dir):
         for filename in files:
