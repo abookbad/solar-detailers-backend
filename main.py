@@ -66,13 +66,7 @@ os.makedirs(CUSTOMER_DATA_DIR, exist_ok=True)
 app.mount("/images", StaticFiles(directory=CUSTOMER_DATA_DIR), name="images")
 
 # --- CORS Middleware ---
-origins = [
-    "http://localhost:3000",
-    "http://localhost",
-    "https://solardetailers.com",
-    # You might want to add your Vercel deployment URL here as well
-    # "https://your-vercel-app-name.vercel.app", 
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
