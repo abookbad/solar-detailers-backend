@@ -825,43 +825,43 @@ async def create_customer_channel_and_post(customer_data: dict):
         # Generate the vCard and get its URL
         vcard_url = create_vcard_file(customer_data["client_id"], customer_data)
 
-        # --- Message 1: Name, Phone, and Address Label ---
-        message1_content = (
-            f"**Name**: {full_name}\n"
-            f"**Phone Number**: {phone_number or 'Not Provided'}\n"
-            f"**Address**:"
-        )
-        await new_channel.send(message1_content)
+        # Determine if it's a natural booking or admin-created
+        is_natural_booking = service_details.get("solar_cleaning") or service_details.get("pigeon_meshing")
 
-        # --- Message 2: Just the Address ---
-        await new_channel.send(full_address)
-
-        # --- Message 3: Service Details ---
-        services = []
-        if service_details.get("solar_cleaning"):
-            services.append("Solar Panel Cleaning")
-        if service_details.get("pigeon_meshing"):
-            services.append("Pigeon Meshing")
+        message_content = ""
+        if is_natural_booking:
+            message_content += "**New Client Through Natural Booking**\n"
         
-        services_text = ", ".join(services) if services else "No services specified"
-        panel_count_text = f"**Panel Count**: {service_details.get('panel_count', 'N/A')}"
+        message_content += f"Name: {full_name}\n"
+        message_content += f"Phone Number: {phone_number or 'Not Provided'}\n"
+        message_content += "Address:\n"
+        message_content += f"{full_address}\n"
 
-        message3_content = (
-            f"**Services Booked**: {services_text}\n"
-            f"{panel_count_text}\n\n"
-            f"**Add to Contacts**: [Click to Download]({vcard_url})"
-        )
-        await new_channel.send(message3_content)
+        if is_natural_booking:
+            services = []
+            if service_details.get("solar_cleaning"): services.append("cleaning")
+            if service_details.get("pigeon_meshing"): services.append("pigeon mesh")
+            
+            if len(services) == 2:
+                services_text = "both"
+            elif len(services) == 1:
+                services_text = services[0]
+            else:
+                services_text = "N/A"
 
-        # --- Message 4: Just the Maps Link ---
-        await new_channel.send(f"**Apple Maps Link**: {apple_maps_link}")
-        logger.info(f"Successfully posted details to channel #{channel_name}")
+            message_content += f"# of Panels: {service_details.get('panel_count', 'N/A')}\n"
+            message_content += f"Services Requested: {services_text}\n\n"
+        else:
+            price_per_panel = service_details.get("price_per_panel", "N/A")
+            panel_count = service_details.get("panel_count", "N/A")
+            quote_amount = s_info.get("quote_amount", 0.0)
+            message_content += f"Price Per Panel: ${price_per_panel} | # of Panels: {panel_count}\n"
+            message_content += f"Quoted: ${quote_amount:.2f}\n\n"
 
-        # --- Message 5: Notification that user booked directly ---
-        if service_details.get("solar_cleaning") or service_details.get("pigeon_meshing"):
-            await new_channel.send(
-                "ℹ️ This appointment was booked directly by the client through the website."
-            )
+        message_content += f"Add to Contacts: [Click to Download]({vcard_url})\n"
+        message_content += f"Apple Maps Link: {apple_maps_link}"
+
+        await new_channel.send(message_content)
 
         # --- Message 6: Warning if no phone number ---
         if not phone_number:
@@ -939,8 +939,20 @@ async def create_customer(payload: VercelWebhookPayload):
             "solar_cleaning": form_data.solarCleaning or False,
             "pigeon_meshing": form_data.pigeonMeshing or False,
             "panel_count": form_data.panelCount or 0,
+            "price_per_panel": form_data.pricePerPanel,
         }
-
+        
+        # Handle potential None for totalAmount
+        quote_amount = 0.0
+        if form_data.totalAmount:
+            try:
+                # remove any non-numeric characters like '$'
+                cleaned_amount = re.sub(r'[^\d.]', '', form_data.totalAmount)
+                if cleaned_amount:
+                    quote_amount = float(cleaned_amount)
+            except (ValueError, TypeError):
+                quote_amount = 0.0
+                
         customer_data = {
             "client_id": contact_id,  # GHL Contact ID is the main ID
             "personal_info": {
@@ -953,7 +965,7 @@ async def create_customer(payload: VercelWebhookPayload):
             "service_history": [
                 {
                     "service_date": service_date.isoformat(),
-                    "quote_amount": 0.0, # Quote amount is not provided from this form
+                    "quote_amount": quote_amount,
                     "service_details": service_details_obj,
                     "follow_up_date": follow_up_date.isoformat(),
                 }
@@ -1026,12 +1038,23 @@ async def add_new_service_to_customer(payload: NewServicePayload):
             if channel_id:
                 channel = client.get_channel(channel_id)
                 if channel:
-                    await channel.send(
-                        f"**New Service Ticket Created**\n"
-                        f"- **Panel Count**: {payload.panelCount}\n"
-                        f"- **Price Per Panel**: ${payload.pricePerPanel}\n"
-                        f"- **Total Amount**: ${payload.totalAmount}"
+                    # Fetch full name for a more personalized message
+                    p_info = customer_data.get("personal_info", {})
+                    full_name = f"{p_info.get('first_name', '')} {p_info.get('last_name', '')}".strip()
+                    
+                    # Safely convert totalAmount to float for formatting
+                    total_amount_float = 0.0
+                    try:
+                        total_amount_float = float(payload.totalAmount)
+                    except (ValueError, TypeError):
+                        pass # Keep it 0.0 if conversion fails
+                    
+                    message_content = (
+                        f"**New Service Ticket Created for {full_name}**\n\n"
+                        f"Price Per Panel: ${payload.pricePerPanel} | # of Panels: {payload.panelCount}\n"
+                        f"Quoted: ${total_amount_float:.2f}\n"
                     )
+                    await channel.send(message_content)
             return customer_data
 
     except (IOError, json.JSONDecodeError, ValueError) as e:
