@@ -1,0 +1,28 @@
+{
+    "client_id": "ktymvE5RDfH1WzVf5e9H",
+    "personal_info": {
+        "first_name": "Gary",
+        "last_name": "G",
+        "email": "",
+        "phone_number": "+119096847824",
+        "address": "7044 Nebraska st, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-13T01:08:53.691976",
+            "quote_amount": 240.0,
+            "service_details": "24 panels at $10 per panel.",
+            "follow_up_date": "2025-10-11T01:08:53.691976"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-13T01:08:53.692001",
+    "discord_channel_id": 1393761069754749009,
+    "archived_in_thread_id": 1393802026831446078
+}

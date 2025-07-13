@@ -1,0 +1,27 @@
+{
+    "client_id": "EzgXqvI88D3xfilbFQDQ",
+    "personal_info": {
+        "first_name": "Gloria",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "9093716794",
+        "address": "15582 Sharon Court, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-11T20:30:38.747881",
+            "quote_amount": 247.0,
+            "service_details": "19 panels at $13 per panel.",
+            "follow_up_date": "2025-10-09T20:30:38.747881"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-11T20:30:38.747916",
+    "discord_channel_id": 1393328657937858698
+}

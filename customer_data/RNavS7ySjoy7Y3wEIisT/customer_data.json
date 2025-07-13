@@ -1,0 +1,28 @@
+{
+    "client_id": "RNavS7ySjoy7Y3wEIisT",
+    "personal_info": {
+        "first_name": "Sam",
+        "last_name": "S",
+        "email": "",
+        "phone_number": "(909) 437-8976",
+        "address": "12737 Mosaic Dr, Rancho cucamonga"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-12T19:44:59.981673",
+            "quote_amount": 285.0,
+            "service_details": "30 panels at $9.5 per panel.",
+            "follow_up_date": "2025-10-10T19:44:59.981673"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-12T19:44:59.981703",
+    "discord_channel_id": 1393679559114756158,
+    "archived_in_thread_id": 1393802105181044828
+}

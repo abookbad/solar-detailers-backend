@@ -1,0 +1,28 @@
+{
+    "client_id": "xkwpGXH4K0qrH9tiGfz2",
+    "personal_info": {
+        "first_name": "Kevin",
+        "last_name": "B",
+        "email": "",
+        "phone_number": "9097039273",
+        "address": "6899 Issac Court, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-11T16:46:06.843250",
+            "quote_amount": 250.0,
+            "service_details": "33 panels at $12 per panel.",
+            "follow_up_date": "2025-10-09T16:46:06.843250"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-11T16:46:06.843299",
+    "discord_channel_id": 1393272152991727716,
+    "archived_in_thread_id": 1393381004902793339
+}

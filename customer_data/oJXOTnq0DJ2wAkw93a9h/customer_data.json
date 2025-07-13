@@ -1,0 +1,27 @@
+{
+    "client_id": "oJXOTnq0DJ2wAkw93a9h",
+    "personal_info": {
+        "first_name": "Glauce",
+        "last_name": "D",
+        "email": "",
+        "phone_number": "9096426904",
+        "address": "15551 Faith Street, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-11T20:47:19.825330",
+            "quote_amount": 224.0,
+            "service_details": "16 panels at $14 per panel.",
+            "follow_up_date": "2025-10-09T20:47:19.825330"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-11T20:47:19.825357",
+    "discord_channel_id": 1393332857056923730
+}

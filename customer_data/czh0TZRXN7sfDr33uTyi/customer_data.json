@@ -1,0 +1,28 @@
+{
+    "client_id": "czh0TZRXN7sfDr33uTyi",
+    "personal_info": {
+        "first_name": "Mansoor",
+        "last_name": "M",
+        "email": "",
+        "phone_number": "9092483114",
+        "address": "4124 San Onofre Ct, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-11T03:34:22.364411",
+            "quote_amount": 270.0,
+            "service_details": "30 panels at $9 per panel.",
+            "follow_up_date": "2025-10-09T03:34:22.364411"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-11T03:34:22.364454",
+    "discord_channel_id": 1393072904660455424,
+    "archived_in_thread_id": 1393803159385935892
+}

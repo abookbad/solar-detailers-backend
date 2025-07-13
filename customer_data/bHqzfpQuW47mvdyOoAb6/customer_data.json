@@ -1,0 +1,28 @@
+{
+    "client_id": "bHqzfpQuW47mvdyOoAb6",
+    "personal_info": {
+        "first_name": "Irene ",
+        "last_name": "H",
+        "email": "",
+        "phone_number": "(909) 900-8030",
+        "address": "7299 Magnolia Place, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-12T22:42:23.303202",
+            "quote_amount": 216.0,
+            "service_details": "18 panels at $12 per panel.",
+            "follow_up_date": "2025-10-10T22:42:23.303202"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-12T22:42:23.303229",
+    "discord_channel_id": 1393724200082215063,
+    "archived_in_thread_id": 1393802132611923978
+}
