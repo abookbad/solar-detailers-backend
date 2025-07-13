@@ -435,6 +435,7 @@ def get_ghl_contact_id(phone: str) -> str | None:
     except requests.exceptions.RequestException as e:
         return None
 
+@app.get("/jobs")
 def get_all_jobs():
     """
     Scans the customer_data directory and returns a list of all jobs,
