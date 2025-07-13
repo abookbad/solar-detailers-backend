@@ -42,7 +42,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Dashboard sync configuration
 DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL", "http://your-dashboard-domain.com")
-SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://windows.agencydevworks.ai:8000")
+SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "https://ssh.agencydevworks.ai:8000")
 
 # --- Token Validation ---
 if not all([GHL_API_TOKEN, GHL_CONVERSATIONS_TOKEN, BOT_TOKEN, OPENAI_API_KEY]):
@@ -740,7 +740,7 @@ async def sync_service_to_dashboard(contact_id: str, service_apt_num: int, befor
     # Convert local file paths to public URLs
     for file_info in before_files:
         # Convert path like: customer_data/contactId/images/service_apt1/before/filename.jpg
-        # To URL like: http://windows.agencydevworks.ai:8000/images/contactId/service_apt1/before/filename.jpg
+        # To URL like: https://ssh.agencydevworks.ai:8000/images/contactId/service_apt1/before/filename.jpg
         relative_path = file_info['path'].replace('customer_data/', '').replace('\\', '/')
         public_url = f"{SERVER_BASE_URL}/images/{relative_path}"
         before_pics.append(public_url)
