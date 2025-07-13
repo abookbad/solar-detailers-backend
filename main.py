@@ -212,7 +212,7 @@ class ConfirmUpdateView(discord.ui.View):
 
 # --- API Endpoints ---
 
-@app.get("/images/{contact_id}")
+@app.get("/api/images/{contact_id}")
 async def get_customer_images(contact_id: str):
     """
     Scans the directory for a given contact ID and returns a list of all
