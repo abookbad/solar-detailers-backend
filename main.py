@@ -443,7 +443,7 @@ def get_all_jobs():
     """
     all_jobs = []
     if not os.path.exists(CUSTOMER_DATA_DIR):
-        return []
+        return {"jobs": []}
 
     for contact_id in os.listdir(CUSTOMER_DATA_DIR):
         customer_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
@@ -470,7 +470,7 @@ def get_all_jobs():
                     continue
     
     all_jobs.sort(key=lambda x: x.get("lastServiceDate") or "", reverse=True)
-    return all_jobs
+    return {"jobs": all_jobs}
 
 def create_vcard_file(contact_id: str, customer_data: dict) -> str:
     """Creates a .vcf file for the customer and returns its URL."""
