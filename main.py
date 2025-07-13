@@ -212,8 +212,113 @@ class ConfirmUpdateView(discord.ui.View):
 
 # --- API Endpoints ---
 
-@app.get("/api/images/{contact_id}")
-async def get_customer_images(contact_id: str):
+def clean_and_format_phone(phone: str) -> str:
+    """
+    Cleans and formats a phone number to E.164 format (+1XXXXXXXXXX).
+    Handles US numbers that may or may not have a country code.
+    Fixes common mistakes like a double '1' prefix.
+    """
+    if not phone:
+        return ""
+    
+    # Keep only digits
+    digits = re.sub(r'\D', '', phone)
+    
+    # Common case: 10 digits, no country code
+    if len(digits) == 10:
+        return f"+1{digits}"
+    
+    # Common case: 11 digits, starts with 1
+    if len(digits) == 11 and digits.startswith('1'):
+        return f"+{digits}"
+    
+    # Error case from user: 12 digits, starts with 11
+    if len(digits) == 12 and digits.startswith('11'):
+        return f"+{digits[1:]}"
+
+    # For any other case, just add a + if it doesn't have one.
+    if digits:
+        return f"+{digits}"
+        
+    return ""
+
+# --- Helper Functions ---
+def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
+    """Creates a contact in GHL and returns the contact ID."""
+    
+    # Phone number should arrive pre-formatted from the endpoint.
+    formatted_phone = phone
+    
+    headers = {
+        "Authorization": f"Bearer {GHL_CONVERSATIONS_TOKEN}",
+        "Version": "2021-07-28",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
+    payload = {
+        "locationId": GHL_LOCATION_ID,
+        "firstName": first_name,
+        "lastName": last_name,
+        "phone": formatted_phone,
+        "address1": address,
+        "city": city
+    }
+    
+    try:
+        response = requests.post("https://services.leadconnectorhq.com/contacts/", headers=headers, json=payload)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        contact_id = data.get("contact", {}).get("id")
+        if contact_id:
+            logger.info(f"Successfully created GHL contact with ID: {contact_id}")
+            return contact_id
+        else:
+            logger.error(f"GHL contact creation succeeded but no ID was returned. Response: {data}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        error_details = "No response body"
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_details = e.response.json()
+            except json.JSONDecodeError:
+                error_details = e.response.text
+        logger.error(f"Failed to create GHL contact. Error: {e}, Details: {error_details}")
+        return None
+
+def get_ghl_contact_id(phone: str) -> str | None:
+    """Looks up a contact in GHL by phone number and returns their ID."""
+    formatted_phone = clean_and_format_phone(phone)
+    if not formatted_phone:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {GHL_API_TOKEN}",
+        "Accept": "application/json"
+    }
+    params = {
+        "phone": formatted_phone
+    }
+    
+    try:
+        response = requests.get(f"{GHL_API_BASE_URL}/contacts/lookup", headers=headers, params=params)
+        response.raise_for_status()  # Raises an exception for bad status codes (4xx or 5xx)
+        
+        data = response.json()
+
+        if data.get("contacts") and len(data["contacts"]) > 0:
+            contact_id = data["contacts"][0].get("id")
+            return contact_id
+        else:
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        return None
+
+def get_customer_images(contact_id: str):
     """
     Scans the directory for a given contact ID and returns a list of all
     publicly accessible image URLs.
@@ -336,113 +441,6 @@ class ConfirmDeleteChannelView(discord.ui.View):
         await interaction.message.delete()
         await interaction.response.send_message("Channel deletion cancelled.", ephemeral=True, delete_after=5)
 
-def clean_and_format_phone(phone: str) -> str:
-    """
-    Cleans and formats a phone number to E.164 format (+1XXXXXXXXXX).
-    Handles US numbers that may or may not have a country code.
-    Fixes common mistakes like a double '1' prefix.
-    """
-    if not phone:
-        return ""
-    
-    # Keep only digits
-    digits = re.sub(r'\D', '', phone)
-    
-    # Common case: 10 digits, no country code
-    if len(digits) == 10:
-        return f"+1{digits}"
-    
-    # Common case: 11 digits, starts with 1
-    if len(digits) == 11 and digits.startswith('1'):
-        return f"+{digits}"
-    
-    # Error case from user: 12 digits, starts with 11
-    if len(digits) == 12 and digits.startswith('11'):
-        return f"+{digits[1:]}"
-
-    # For any other case, just add a + if it doesn't have one.
-    if digits:
-        return f"+{digits}"
-        
-    return ""
-
-# --- Helper Functions ---
-def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
-    """Creates a contact in GHL and returns the contact ID."""
-    
-    # Phone number should arrive pre-formatted from the endpoint.
-    formatted_phone = phone
-    
-    headers = {
-        "Authorization": f"Bearer {GHL_CONVERSATIONS_TOKEN}",
-        "Version": "2021-07-28",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    
-    payload = {
-        "locationId": GHL_LOCATION_ID,
-        "firstName": first_name,
-        "lastName": last_name,
-        "phone": formatted_phone,
-        "address1": address,
-        "city": city
-    }
-    
-    try:
-        response = requests.post("https://services.leadconnectorhq.com/contacts/", headers=headers, json=payload)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        contact_id = data.get("contact", {}).get("id")
-        if contact_id:
-            logger.info(f"Successfully created GHL contact with ID: {contact_id}")
-            return contact_id
-        else:
-            logger.error(f"GHL contact creation succeeded but no ID was returned. Response: {data}")
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        error_details = "No response body"
-        if hasattr(e, 'response') and e.response is not None:
-            try:
-                error_details = e.response.json()
-            except json.JSONDecodeError:
-                error_details = e.response.text
-        logger.error(f"Failed to create GHL contact. Error: {e}, Details: {error_details}")
-        return None
-
-def get_ghl_contact_id(phone: str) -> str | None:
-    """Looks up a contact in GHL by phone number and returns their ID."""
-    formatted_phone = clean_and_format_phone(phone)
-    if not formatted_phone:
-        return None
-
-    headers = {
-        "Authorization": f"Bearer {GHL_API_TOKEN}",
-        "Accept": "application/json"
-    }
-    params = {
-        "phone": formatted_phone
-    }
-    
-    try:
-        response = requests.get(f"{GHL_API_BASE_URL}/contacts/lookup", headers=headers, params=params)
-        response.raise_for_status()  # Raises an exception for bad status codes (4xx or 5xx)
-        
-        data = response.json()
-
-        if data.get("contacts") and len(data["contacts"]) > 0:
-            contact_id = data["contacts"][0].get("id")
-            return contact_id
-        else:
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        return None
-
-@app.get("/jobs")
 def get_all_jobs():
     """
     Scans the customer_data directory and returns a list of all jobs,
@@ -869,7 +867,6 @@ async def create_customer_channel_and_post(customer_data: dict):
         logger.error(f"An unexpected error occurred in create_customer_channel_and_post: {e}")
         logger.error(traceback.format_exc())
 
-@app.post("/customer/create")
 async def create_customer(payload: VercelWebhookPayload):
     """
     Webhook to create a GHL contact, then create a customer folder using the GHL ID.
@@ -979,6 +976,22 @@ async def create_customer(payload: VercelWebhookPayload):
         logger.error(f"An unhandled exception occurred in /customer/create endpoint: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
+
+# --- Final API Endpoint Definitions ---
+# It's good practice to define routes after the functions they call.
+
+@app.get("/api/images/{contact_id}")
+async def final_get_customer_images(contact_id: str):
+    return await get_customer_images(contact_id)
+
+@app.get("/jobs")
+def final_get_all_jobs():
+    return get_all_jobs()
+
+@app.post("/customer/create")
+async def final_create_customer(payload: VercelWebhookPayload):
+    return await create_customer(payload)
+
 
 @app.on_event("startup")
 async def startup_event():
