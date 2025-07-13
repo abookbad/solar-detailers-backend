@@ -1,0 +1,28 @@
+{
+    "client_id": "GocSeKwyAeojSdSvxYqP",
+    "personal_info": {
+        "first_name": "Ali",
+        "last_name": "H",
+        "email": "",
+        "phone_number": "9095367557",
+        "address": "1317 W Ralston St, Ontario"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-06-29T18:04:35.578268",
+            "quote_amount": 250.0,
+            "service_details": "25 panels at $11 per panel.",
+            "follow_up_date": "2025-09-27T18:04:35.578268"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-06-29T18:04:35.578314",
+    "discord_channel_id": 1388943248533225662,
+    "archived_in_thread_id": 1392406908195045541
+}

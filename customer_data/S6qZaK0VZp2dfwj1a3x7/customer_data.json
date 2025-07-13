@@ -1,0 +1,28 @@
+{
+    "client_id": "S6qZaK0VZp2dfwj1a3x7",
+    "personal_info": {
+        "first_name": "Nick",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "6268258020",
+        "address": "3732 Grower Avenue, Ontario"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-01T20:59:12.090373",
+            "quote_amount": 200.0,
+            "service_details": "40 panels at $11 per panel.",
+            "follow_up_date": "2025-09-29T20:59:12.090373"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-01T20:59:12.090403",
+    "discord_channel_id": 1389711966120972451,
+    "archived_in_thread_id": 1392406895624720384
+}

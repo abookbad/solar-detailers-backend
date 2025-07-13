@@ -1,0 +1,98 @@
+[
+    {
+        "contact_id": "rQqg3sCUBicnAkyT83f2",
+        "amount": 400.0,
+        "channel_id": 1389726576073113620,
+        "date": "2025-07-08T18:39:45.227210"
+    },
+    {
+        "contact_id": "vzeR4LbZeA7P6uEABhoK",
+        "amount": 300.0,
+        "channel_id": 1389383480093184021,
+        "date": "2025-07-08T18:40:02.437163"
+    },
+    {
+        "contact_id": "o8YiCUvAnSYRYbRaN2d0",
+        "amount": 120.0,
+        "channel_id": 1391597092576690339,
+        "date": "2025-07-08T18:41:21.285033"
+    },
+    {
+        "contact_id": "maKO6FlWuMsq26cWzb7R",
+        "amount": 250.0,
+        "channel_id": 1391209768630095912,
+        "date": "2025-07-08T18:41:36.754885"
+    },
+    {
+        "contact_id": "yClFHv8flHXEuPxd4H1i",
+        "amount": 360.0,
+        "channel_id": 1391549850298093640,
+        "date": "2025-07-08T18:42:00.030135"
+    },
+    {
+        "contact_id": "uJAks7QmR6YLJdMOoZlm",
+        "amount": 110.0,
+        "channel_id": 1388986566646431808,
+        "date": "2025-07-08T18:45:36.881824"
+    },
+    {
+        "contact_id": "S6qZaK0VZp2dfwj1a3x7",
+        "amount": 200.0,
+        "channel_id": 1389711966120972451,
+        "date": "2025-07-08T18:46:28.245646"
+    },
+    {
+        "contact_id": "uGFzCBYU4RBvVpengKuF",
+        "amount": 150.0,
+        "channel_id": 1390079023698415657,
+        "date": "2025-07-08T18:46:53.147553"
+    },
+    {
+        "contact_id": "KIevhCOYHNYo9n3ISRoK",
+        "amount": 420.0,
+        "channel_id": 1391917564602482760,
+        "date": "2025-07-08T18:47:02.597788"
+    },
+    {
+        "contact_id": "leiCEK8B7drjM74VZ1WX",
+        "amount": 300.0,
+        "channel_id": 1391614845899636839,
+        "date": "2025-07-08T18:47:15.746132"
+    },
+    {
+        "contact_id": "8HvvRXQ1r2KieAgng8aD",
+        "amount": 210.0,
+        "channel_id": 1391558259135086726,
+        "date": "2025-07-08T18:47:28.554927"
+    },
+    {
+        "contact_id": "hJHupoYSvCkLXE99BobV",
+        "amount": 187.0,
+        "channel_id": 1391918714932428851,
+        "date": "2025-07-08T18:47:40.427698"
+    },
+    {
+        "contact_id": "3GHvxciRS1mkMZPQQ6k4",
+        "amount": 1300.0,
+        "channel_id": 1390471650566340709,
+        "date": "2025-07-08T18:47:51.214346"
+    },
+    {
+        "contact_id": "T89r1syu2eqNMy9JbK3A",
+        "amount": 275.0,
+        "channel_id": 1392403051066822747,
+        "date": "2025-07-09T07:14:41.134546"
+    },
+    {
+        "contact_id": "nlgg9edm9qUtwS9lXpSm",
+        "amount": 350.0,
+        "channel_id": 1392403181769855048,
+        "date": "2025-07-09T07:16:29.454241"
+    },
+    {
+        "contact_id": "VP0x3HphuoLiyPydgPk4",
+        "amount": 250.0,
+        "channel_id": 1392403505167204372,
+        "date": "2025-07-09T07:16:41.762595"
+    }
+]

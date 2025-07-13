@@ -1,0 +1,28 @@
+{
+    "client_id": "uJAks7QmR6YLJdMOoZlm",
+    "personal_info": {
+        "first_name": "Ms. Harris",
+        "last_name": "",
+        "email": "",
+        "phone_number": "9095196820",
+        "address": "9846 Bolton, Montclair "
+    },
+    "service_history": [
+        {
+            "service_date": "2025-06-29T20:56:43.459064",
+            "quote_amount": 110.0,
+            "service_details": "10 panels at $11 per panel.",
+            "follow_up_date": "2025-09-27T20:56:43.459064"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-06-29T20:56:43.459097",
+    "discord_channel_id": 1388986566646431808,
+    "archived_in_thread_id": 1392406943599169566
+}

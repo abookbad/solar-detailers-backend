@@ -1,0 +1,28 @@
+{
+    "client_id": "hJHupoYSvCkLXE99BobV",
+    "personal_info": {
+        "first_name": "Rick",
+        "last_name": "R",
+        "email": "",
+        "phone_number": "9099736105",
+        "address": "11724 Carlisle Ave, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-07T23:08:02.137691",
+            "quote_amount": 176.0,
+            "service_details": "16 panels at $11 per panel.",
+            "follow_up_date": "2025-10-05T23:08:02.137691"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-07T23:08:02.137717",
+    "discord_channel_id": 1391918714932428851,
+    "archived_in_thread_id": 1392406914280722442
+}

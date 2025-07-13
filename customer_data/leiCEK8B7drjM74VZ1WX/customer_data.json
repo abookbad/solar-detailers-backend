@@ -1,0 +1,28 @@
+{
+    "client_id": "leiCEK8B7drjM74VZ1WX",
+    "personal_info": {
+        "first_name": "Monica",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "9094462615",
+        "address": "4395 Goldenrod Court, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-07T03:00:33.814706",
+            "quote_amount": 300.0,
+            "service_details": "28 panels at $11 per panel.",
+            "follow_up_date": "2025-10-05T03:00:33.814706"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-07T03:00:33.814745",
+    "discord_channel_id": 1391614845899636839,
+    "archived_in_thread_id": 1392406897503764520
+}

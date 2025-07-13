@@ -1,0 +1,28 @@
+{
+    "client_id": "vzeR4LbZeA7P6uEABhoK",
+    "personal_info": {
+        "first_name": "Angie",
+        "last_name": "/",
+        "email": "",
+        "phone_number": "9513104236",
+        "address": "3491 Rawhide Ln , Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-06-30T23:13:54.958896",
+            "quote_amount": 300.0,
+            "service_details": "36 panels at $8.33 per panel.",
+            "follow_up_date": "2025-09-28T23:13:54.958896"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-06-30T23:13:54.958929",
+    "discord_channel_id": 1389383480093184021,
+    "archived_in_thread_id": 1392406904126570577
+}

@@ -1,0 +1,28 @@
+{
+    "client_id": "8HvvRXQ1r2KieAgng8aD",
+    "personal_info": {
+        "first_name": "Jerry",
+        "last_name": "N",
+        "email": "",
+        "phone_number": "9515322842",
+        "address": "11875 silicon ave, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-06T23:15:42.724059",
+            "quote_amount": 217.8,
+            "service_details": "33 panels at $6.6 per panel.",
+            "follow_up_date": "2025-10-04T23:15:42.724059"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-06T23:15:42.724097",
+    "discord_channel_id": 1391558259135086726,
+    "archived_in_thread_id": 1392406906320195756
+}

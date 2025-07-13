@@ -1,0 +1,28 @@
+{
+    "client_id": "KIevhCOYHNYo9n3ISRoK",
+    "personal_info": {
+        "first_name": "Jole",
+        "last_name": "H",
+        "email": "",
+        "phone_number": "9095733421",
+        "address": "4281 Lexington Avenue, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-07T23:03:27.884872",
+            "quote_amount": 420.0,
+            "service_details": "42 panels at $10 per panel.",
+            "follow_up_date": "2025-10-05T23:03:27.884872"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-07T23:03:27.884896",
+    "discord_channel_id": 1391917564602482760,
+    "archived_in_thread_id": 1392406947872899193
+}

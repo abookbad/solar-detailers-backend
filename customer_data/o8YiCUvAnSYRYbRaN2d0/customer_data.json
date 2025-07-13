@@ -1,0 +1,28 @@
+{
+    "client_id": "o8YiCUvAnSYRYbRaN2d0",
+    "personal_info": {
+        "first_name": "Mari",
+        "last_name": "Sada",
+        "email": "",
+        "phone_number": "9096643611",
+        "address": "4276 Independence St, Chino"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-07T01:50:01.291543",
+            "quote_amount": 132.0,
+            "service_details": "33 panels at $4 per panel.",
+            "follow_up_date": "2025-10-05T01:50:01.291543"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-07T01:50:01.291578",
+    "discord_channel_id": 1391597092576690339,
+    "archived_in_thread_id": 1392406951962480652
+}

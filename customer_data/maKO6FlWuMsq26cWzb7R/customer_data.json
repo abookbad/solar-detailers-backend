@@ -1,0 +1,28 @@
+{
+    "client_id": "maKO6FlWuMsq26cWzb7R",
+    "personal_info": {
+        "first_name": "Dan",
+        "last_name": "G",
+        "email": "",
+        "phone_number": "6106085260",
+        "address": "11240 Clemson Drive, Rancho Cucamonga"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-06T00:10:56.093023",
+            "quote_amount": 250.0,
+            "service_details": "21 panels at $12 per panel.",
+            "follow_up_date": "2025-10-04T00:10:56.093023"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-06T00:10:56.093055",
+    "discord_channel_id": 1391209768630095912,
+    "archived_in_thread_id": 1392406938465341492
+}
