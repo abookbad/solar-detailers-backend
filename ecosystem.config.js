@@ -14,7 +14,7 @@ module.exports = {
       // These are variables for all environments
       GHL_LOCATION_ID: 'cWEwz6JBFHPY0LeC3ry3',
       DISCORD_CATEGORY_NAME: 'Solar Detail',
-      GHL_SMS_FROM_NUMBER: '+19094049641',
+      GHL_SMS_FROM_NUMBER: '+19093237655',
       GHL_API_BASE_URL: 'https://rest.gohighlevel.com/v1'
     },
     env_production: {
