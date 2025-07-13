@@ -128,6 +128,12 @@ class MembershipStatusUpdate(BaseModel):
     plan_basis_months: int = None
     quoted_price: float = None
 
+class NewServicePayload(BaseModel):
+    contactId: str
+    pricePerPanel: str
+    panelCount: str
+    totalAmount: str
+
 # --- Discord UI Views (for Buttons) ---
 class UpdateImageView(discord.ui.View):
     def __init__(self, contact_id: str):
@@ -983,6 +989,56 @@ async def create_customer(payload: VercelWebhookPayload):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
 
+async def add_new_service_to_customer(payload: NewServicePayload):
+    """Adds a new service entry to an existing customer's file."""
+    contact_id = payload.contactId
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+
+    if not os.path.exists(customer_file):
+        raise HTTPException(status_code=404, detail=f"Customer file not found for contact ID: {contact_id}")
+
+    try:
+        with open(customer_file, "r+") as f:
+            customer_data = json.load(f)
+            
+            new_service = {
+                "service_date": datetime.utcnow().isoformat(),
+                "quote_amount": float(payload.totalAmount),
+                "service_details": {
+                    "price_per_panel": float(payload.pricePerPanel),
+                    "panel_count": int(payload.panelCount),
+                    # Since this is admin-created, we assume no specific services were booked
+                    "solar_cleaning": False,
+                    "pigeon_meshing": False,
+                },
+                "follow_up_date": (datetime.utcnow() + timedelta(days=90)).isoformat(),
+            }
+            
+            customer_data.get("service_history", []).append(new_service)
+            
+            # Rewind and write back
+            f.seek(0)
+            json.dump(customer_data, f, indent=4)
+            f.truncate()
+
+            # Post update to Discord
+            channel_id = customer_data.get("discord_channel_id")
+            if channel_id:
+                channel = client.get_channel(channel_id)
+                if channel:
+                    await channel.send(
+                        f"**New Service Ticket Created**\n"
+                        f"- **Panel Count**: {payload.panelCount}\n"
+                        f"- **Price Per Panel**: ${payload.pricePerPanel}\n"
+                        f"- **Total Amount**: ${payload.totalAmount}"
+                    )
+            return customer_data
+
+    except (IOError, json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Error updating customer file for {contact_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update customer service history.")
+
+
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
 
@@ -997,6 +1053,10 @@ def final_get_all_jobs():
 @app.post("/customer/create")
 async def final_create_customer(payload: VercelWebhookPayload):
     return await create_customer(payload)
+
+@app.post("/customer/add-service")
+async def final_add_new_service(payload: NewServicePayload):
+    return await add_new_service_to_customer(payload)
 
 
 @app.on_event("startup")
