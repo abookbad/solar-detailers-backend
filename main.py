@@ -56,13 +56,6 @@ scheduler = AsyncIOScheduler(jobstores=jobstores)
 
 app = FastAPI()
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url.path} from {request.client.host}")
-    response = await call_next(request)
-    logger.info(f"Response status for {request.url.path}: {response.status_code}")
-    return response
-
 # Mount the static directory to serve vCard files
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
