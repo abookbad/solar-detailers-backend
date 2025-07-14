@@ -21,6 +21,7 @@ import traceback
 import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from fastapi import Query
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1265,7 +1266,7 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 # It's good practice to define routes after the functions they call.
 
 @app.get("/membership/details")
-async def final_get_membership_details(contact_id: str):
+async def final_get_membership_details(contact_id: str = Query(..., alias="contactId")):
     return get_membership_details(contact_id)
 
 @app.get("/api/service-data/{contact_id}/{service_number}")
