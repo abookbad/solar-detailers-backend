@@ -1,0 +1,32 @@
+{
+    "client_id": "7dISCqR7l2Ae9ruhlRjC",
+    "personal_info": {
+        "first_name": "Mustafa",
+        "last_name": "Y",
+        "email": "",
+        "phone_number": "+19098270432",
+        "address": "7204 Abigail Place, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-14T09:36:01.068277",
+            "quote_amount": 25.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 5,
+                "price_per_panel": "5"
+            },
+            "follow_up_date": "2025-10-12T09:36:01.068277"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-14T09:36:01.068492",
+    "discord_channel_id": 1394251079075758171
+}
