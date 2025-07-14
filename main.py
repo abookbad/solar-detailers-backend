@@ -156,10 +156,57 @@ async def on_message(message: discord.Message):
                     response_message += f"⚠️ **Failed to send gallery link SMS**: {result_msg}"
                 
                 await processing_msg.edit(content=response_message)
+
+                # Prompt to send a review link
+                review_view = ReviewRequestView(contact_id=contact_id)
+                await message.channel.send(
+                    "Next, would you like to ask the client for a review?",
+                    view=review_view
+                )
         
         except Exception as e:
             logger.error(f"Error processing image upload: {e}\n{traceback.format_exc()}")
             await processing_msg.edit(content=f"❌ An error occurred during image processing: {e}")
+
+class ReviewRequestView(discord.ui.View):
+    def __init__(self, contact_id: str):
+        super().__init__(timeout=600)  # 10 minute timeout
+        self.contact_id = contact_id
+
+    @discord.ui.button(label="Send Google Review Link", style=discord.ButtonStyle.success, emoji="⭐")
+    async def send_review_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+
+        button.disabled = True
+        button.label = "Review Link Sent!"
+        await interaction.message.edit(view=self)
+
+        customer_file = os.path.join(CUSTOMER_DATA_DIR, self.contact_id, "customer_data.json")
+        if not os.path.exists(customer_file):
+            await interaction.followup.send("❌ Could not find customer data file.", ephemeral=True)
+            return
+
+        try:
+            with open(customer_file, "r") as f:
+                customer_data = json.load(f)
+            
+            p_info = customer_data.get("personal_info", {})
+            first_name = p_info.get("first_name")
+            phone_number = p_info.get("phone_number")
+
+            if not all([first_name, phone_number]):
+                await interaction.followup.send("❌ Client is missing a first name or phone number.", ephemeral=True)
+                return
+            
+            success, message = await send_review_request_sms(contact_id=self.contact_id, first_name=first_name, to_number=phone_number)
+
+            if success:
+                await interaction.channel.send(f"✅ Review link sent to **{first_name}** by {interaction.user.mention}.")
+            else:
+                await interaction.followup.send(f"⚠️ Failed to send review link: {message}", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
 
 class UpdateValueModal(discord.ui.Modal):
     def __init__(self, contact_id: str, field_to_update: str):
