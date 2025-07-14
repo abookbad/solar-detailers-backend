@@ -854,17 +854,18 @@ def get_dashboard_stats():
         for payment in payments_data:
             amount = float(payment.get("amount", 0))
             contact_id = payment.get("contact_id")
-            timestamp_str = payment.get("timestamp")
+            # Correctly look for the 'date' field instead of 'timestamp'
+            date_str = payment.get("date")
 
             if amount > 0:
                 stats["totalRevenue"] += amount
                 if contact_id:
                     paid_clients.add(contact_id)
 
-                if timestamp_str:
+                if date_str:
                     try:
-                        # Assuming timestamp is in ISO 8601 format
-                        payment_time = datetime.fromisoformat(timestamp_str)
+                        # The format is ISO 8601, so fromisoformat is appropriate
+                        payment_time = datetime.fromisoformat(date_str)
                         
                         if payment_time >= today_start:
                             stats["dailyRevenue"] += amount
@@ -873,7 +874,7 @@ def get_dashboard_stats():
                         if payment_time >= month_start:
                             stats["monthlyRevenue"] += amount
                     except ValueError:
-                        logger.warning(f"Could not parse timestamp: {timestamp_str}")
+                        logger.warning(f"Could not parse date: {date_str}")
 
     except (json.JSONDecodeError, IOError, ValueError) as e:
         logger.error(f"Error processing payments.json: {e}")
