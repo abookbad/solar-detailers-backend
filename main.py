@@ -161,6 +161,72 @@ async def on_message(message: discord.Message):
             logger.error(f"Error processing image upload: {e}\n{traceback.format_exc()}")
             await processing_msg.edit(content=f"❌ An error occurred during image processing: {e}")
 
+class UpdateValueModal(discord.ui.Modal):
+    def __init__(self, contact_id: str, field_to_update: str):
+        super().__init__(title=f"Update {field_to_update}")
+        self.contact_id = contact_id
+        self.field_to_update = field_to_update
+        self.new_value_input = discord.ui.TextInput(
+            label=f"New {field_to_update}",
+            placeholder=f"Enter the new {field_to_update}...",
+            style=discord.TextStyle.short,
+            required=True
+        )
+        self.add_item(self.new_value_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        new_value = self.new_value_input.value
+        customer_file = os.path.join(CUSTOMER_DATA_DIR, self.contact_id, "customer_data.json")
+
+        try:
+            with open(customer_file, "r+") as f:
+                customer_data = json.load(f)
+                
+                # Update logic based on the field
+                if self.field_to_update == "Name":
+                    parts = new_value.split(" ", 1)
+                    customer_data["personal_info"]["first_name"] = parts[0]
+                    customer_data["personal_info"]["last_name"] = parts[1] if len(parts) > 1 else ""
+                elif self.field_to_update == "Phone Number":
+                    customer_data["personal_info"]["phone_number"] = clean_and_format_phone(new_value)
+                elif self.field_to_update == "Price Per Panel":
+                    customer_data["service_history"][-1]["service_details"]["price_per_panel"] = float(new_value)
+                elif self.field_to_update == "# of Panels":
+                    customer_data["service_history"][-1]["service_details"]["panel_count"] = int(new_value)
+                elif self.field_to_update == "Quoted Price":
+                    customer_data["service_history"][-1]["quote_amount"] = float(new_value)
+
+                # Write changes back
+                f.seek(0)
+                json.dump(customer_data, f, indent=4)
+                f.truncate()
+            
+            await interaction.followup.send(f"✅ Successfully updated `{self.field_to_update}` for contact `{self.contact_id}`.", ephemeral=True)
+            await interaction.channel.send(f"ℹ️ **{interaction.user.mention} updated the following field:**\n- **{self.field_to_update}** was updated to `{new_value}`.")
+
+        except (IOError, json.JSONDecodeError, ValueError, IndexError) as e:
+            await interaction.followup.send(f"❌ An error occurred: {e}. Please ensure the value is in the correct format.", ephemeral=True)
+
+class UpdateSelectView(discord.ui.View):
+    def __init__(self, contact_id: str):
+        super().__init__(timeout=180)
+        self.contact_id = contact_id
+        options = [
+            discord.SelectOption(label="Name", description="Update the client's full name."),
+            discord.SelectOption(label="Phone Number", description="Update the client's phone number."),
+            discord.SelectOption(label="Price Per Panel", description="Update the price per panel for the latest service."),
+            discord.SelectOption(label="# of Panels", description="Update the panel count for the latest service."),
+            discord.SelectOption(label="Quoted Price", description="Update the total quoted price for the latest service."),
+        ]
+        self.add_item(discord.ui.Select(placeholder="Choose a field to update...", options=options, custom_id="update_select"))
+
+    @discord.ui.select(custom_id="update_select")
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        field_to_update = select.values[0]
+        modal = UpdateValueModal(contact_id=self.contact_id, field_to_update=field_to_update)
+        await interaction.response.send_modal(modal)
+
 # --- Pydantic Models ---
 # Models updated to match the new webhook structure with a nested "formData" object.
 class FormData(BaseModel):
@@ -250,6 +316,17 @@ class ConfirmUpdateView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         await interaction.message.edit(view=self)
+
+@tree.command(name="update", description="Update a client's information.")
+async def update(interaction: discord.Interaction):
+    """Starts an interactive process to update client data."""
+    contact_id = _get_contact_id_from_channel(interaction.channel.id)
+    if not contact_id:
+        await interaction.response.send_message("❌ This command can only be used in a client's channel.", ephemeral=True)
+        return
+        
+    view = UpdateSelectView(contact_id)
+    await interaction.response.send_message("Please select the information you would like to update:", view=view, ephemeral=True)
 
 @tree.command(name="before", description="Initiates the process for uploading 'before' service pictures.")
 async def before(interaction: discord.Interaction):
@@ -353,6 +430,31 @@ def clean_and_format_phone(phone: str) -> str:
         return f"+{digits}"
         
     return ""
+
+def format_phone_for_display(phone: str) -> str:
+    """Formats an E.164 number to (XXX) XXX-XXXX for display."""
+    if not phone:
+        return "Not Provided"
+    
+    # Remove non-digit characters
+    digits = re.sub(r'\D', '', phone)
+    
+    # Handle numbers with country code (e.g., +19091234567)
+    if len(digits) == 11 and digits.startswith('1'):
+        area_code = digits[1:4]
+        prefix = digits[4:7]
+        line_number = digits[7:11]
+        return f"({area_code}) {prefix}-{line_number}"
+    
+    # Handle numbers without country code (e.g., 9091234567)
+    if len(digits) == 10:
+        area_code = digits[0:3]
+        prefix = digits[3:6]
+        line_number = digits[6:10]
+        return f"({area_code}) {prefix}-{line_number}"
+
+    # Fallback for any other format
+    return phone
 
 # --- Helper Functions ---
 def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
@@ -1094,7 +1196,7 @@ async def create_customer_channel_and_post(customer_data: dict):
             message1_content += "**New Client Through Natural Booking**\n"
         
         message1_content += f"**Name:** {full_name}\n"
-        message1_content += f"**Phone Number:** {phone_number or 'Not Provided'}\n"
+        message1_content += f"**Phone Number:** {format_phone_for_display(phone_number)}\n"
         message1_content += "**Address:**"
         await new_channel.send(message1_content)
 
