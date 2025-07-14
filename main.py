@@ -822,6 +822,38 @@ def get_membership_details(contact_id: str):
         logger.error(f"Error reading customer data for {contact_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to read customer data.")
 
+def get_dashboard_stats():
+    """
+    Calculates total revenue and total clients from the payments.json file.
+    """
+    payments_file = os.path.join("bot_data", "payments.json")
+    total_revenue = 0.0
+    paid_clients = set()
+
+    if not os.path.exists(payments_file):
+        logger.warning("payments.json not found. Returning zero stats.")
+        return {"totalRevenue": 0, "totalClients": 0}
+
+    try:
+        with open(payments_file, "r") as f:
+            payments_data = json.load(f)
+        
+        for payment in payments_data:
+            amount = float(payment.get("amount", 0))
+            contact_id = payment.get("contact_id")
+
+            if amount > 0:
+                total_revenue += amount
+                if contact_id:
+                    paid_clients.add(contact_id)
+                    
+    except (json.JSONDecodeError, IOError, ValueError) as e:
+        logger.error(f"Error processing payments.json: {e}")
+        # Return zero stats in case of file corruption or error
+        return {"totalRevenue": 0, "totalClients": 0}
+
+    return {"totalRevenue": total_revenue, "totalClients": len(paid_clients)}
+
 async def get_service_images_and_details(contact_id: str, service_number: int):
     """
     Scans for images and details for a specific service appointment and returns them.
@@ -1263,6 +1295,10 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
+
+@app.get("/api/dashboard-stats")
+async def final_get_dashboard_stats():
+    return get_dashboard_stats()
 
 @app.get("/membership/details")
 async def final_get_membership_details(contact_id: str = Query(..., alias="contactId")):
