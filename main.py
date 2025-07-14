@@ -1088,42 +1088,44 @@ async def create_customer_channel_and_post(customer_data: dict):
         # Determine if it's a natural booking or admin-created
         is_natural_booking = service_details.get("solar_cleaning") or service_details.get("pigeon_meshing")
 
-        message_content = ""
+        # --- Message 1: Name, Phone, Address Label ---
+        message1_content = ""
         if is_natural_booking:
-            message_content += "**New Client Through Natural Booking**\n"
+            message1_content += "**New Client Through Natural Booking**\n"
         
-        message_content += f"Name: {full_name}\n"
-        message_content += f"Phone Number: {phone_number or 'Not Provided'}\n"
-        message_content += "Address:\n"
-        message_content += f"{full_address}\n"
+        message1_content += f"**Name:** {full_name}\n"
+        message1_content += f"**Phone Number:** {phone_number or 'Not Provided'}\n"
+        message1_content += "**Address:**"
+        await new_channel.send(message1_content)
 
+        # --- Message 2: Just the Address ---
+        await new_channel.send(full_address)
+
+        # --- Message 3: Service Details, Contacts, Maps ---
+        message3_content = ""
         if is_natural_booking:
             services = []
             if service_details.get("solar_cleaning"): services.append("cleaning")
             if service_details.get("pigeon_meshing"): services.append("pigeon mesh")
             
-            if len(services) == 2:
-                services_text = "both"
-            elif len(services) == 1:
-                services_text = services[0]
-            else:
-                services_text = "N/A"
+            services_text = "both" if len(services) == 2 else services[0] if len(services) == 1 else "N/A"
 
-            message_content += f"# of Panels: {service_details.get('panel_count', 'N/A')}\n"
-            message_content += f"Services Requested: {services_text}\n\n"
+            message3_content += f"**# of Panels:** {service_details.get('panel_count', 'N/A')}\n"
+            message3_content += f"**Services Requested:** {services_text}\n\n"
         else:
             price_per_panel = service_details.get("price_per_panel", "N/A")
-            panel_count = service_details.get("panel_count", "N/A")
+            panel_count = service_details.get('panel_count', 0)
+            panel_count_str = f"{panel_count:03d}" if isinstance(panel_count, int) else str(panel_count)
             quote_amount = s_info.get("quote_amount", 0.0)
-            message_content += f"Price Per Panel: ${price_per_panel} | # of Panels: {panel_count}\n"
-            message_content += f"Quoted: ${quote_amount:.2f}\n\n"
+            
+            message3_content += f"**Price Per Panel:** ${price_per_panel} | **# of Panels:** {panel_count_str}\n"
+            message3_content += f"**Quoted:** ${quote_amount:.2f}\n\n"
 
-        message_content += f"Add to Contacts: [Click to Download]({vcard_url})\n"
-        message_content += f"Apple Maps Link: {apple_maps_link}"
+        message3_content += f"**Add to Contacts:** [Click to Download]({vcard_url})\n"
+        message3_content += f"**Apple Maps Link:** {apple_maps_link}"
+        await new_channel.send(message3_content)
 
-        await new_channel.send(message_content)
-
-        # --- Message 6: Warning if no phone number ---
+        # --- Message 4: Warning if no phone number ---
         if not phone_number:
             await new_channel.send(
                 "⚠️ **Action Required**: This client was created without a phone number. "
@@ -1311,8 +1313,8 @@ async def add_new_service_to_customer(payload: NewServicePayload):
                     
                     message_content = (
                         f"**New Service Ticket Created for {full_name}**\n\n"
-                        f"Price Per Panel: ${payload.pricePerPanel} | # of Panels: {payload.panelCount}\n"
-                        f"Quoted: ${total_amount_float:.2f}\n"
+                        f"**Price Per Panel:** ${payload.pricePerPanel} | **# of Panels:** {payload.panelCount}\n"
+                        f"**Quoted:** ${total_amount_float:.2f}\n"
                     )
                     await channel.send(message_content)
             return customer_data
