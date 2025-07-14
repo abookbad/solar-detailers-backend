@@ -193,24 +193,118 @@ class ConfirmUpdateView(discord.ui.View):
             item.disabled = True
         await interaction.message.edit(view=self)
 
-@tree.command(name="update", description="Show buttons to update Before/After photos for a client.")
-@app_commands.describe(contact_id="The Contact ID of the client to update photos for.")
-async def update(interaction: discord.Interaction, contact_id: str):
-    """Provides buttons to upload before and after pictures for a given contact."""
+@tree.command(name="before", description="Upload 'before' pictures for a client's service.")
+@app_commands.describe(
+    contact_id="The Contact ID for the client.",
+    attachment1="The first 'before' image.",
+    attachment2="The second 'before' image (optional).",
+    attachment3="The third 'before' image (optional).",
+    attachment4="The fourth 'before' image (optional).",
+    attachment5="The fifth 'before' image (optional).",
+    attachment6="The sixth 'before' image (optional).",
+    attachment7="The seventh 'before' image (optional).",
+    attachment8="The eighth 'before' image (optional).",
+    attachment9="The ninth 'before' image (optional).",
+    attachment10="The tenth 'before' image (optional)."
+)
+async def before(
+    interaction: discord.Interaction,
+    contact_id: str,
+    attachment1: discord.Attachment,
+    attachment2: discord.Attachment = None,
+    attachment3: discord.Attachment = None,
+    attachment4: discord.Attachment = None,
+    attachment5: discord.Attachment = None,
+    attachment6: discord.Attachment = None,
+    attachment7: discord.Attachment = None,
+    attachment8: discord.Attachment = None,
+    attachment9: discord.Attachment = None,
+    attachment10: discord.Attachment = None
+):
+    """Handles the upload of 'before' service pictures."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
     customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
     if not os.path.exists(customer_file):
-        await interaction.response.send_message(
-            f"❌ No customer found with Contact ID: `{contact_id}`. Please check the ID and try again.",
-            ephemeral=True
-        )
+        await interaction.followup.send(f"❌ No customer found with Contact ID: `{contact_id}`. Please check the ID.", ephemeral=True)
         return
 
-    view = UpdateImageView(contact_id=contact_id)
-    await interaction.response.send_message(
-        f"Please select whether you are uploading **Before** or **After** images for contact `{contact_id}`.",
-        view=view,
-        ephemeral=True
-    )
+    attachments = [att for att in [attachment1, attachment2, attachment3, attachment4, attachment5, attachment6, attachment7, attachment8, attachment9, attachment10] if att]
+
+    try:
+        downloaded_files = await download_and_store_images(attachments, contact_id, "before")
+        
+        if not downloaded_files:
+            await interaction.followup.send("⚠️ No valid images were attached. Please upload image files.", ephemeral=True)
+            return
+
+        await interaction.followup.send(f"✅ Successfully uploaded {len(downloaded_files)} 'before' image(s) for contact `{contact_id}`.", ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error in /before command: {e}\n{traceback.format_exc()}")
+        await interaction.followup.send(f"❌ An error occurred while uploading 'before' images: {e}", ephemeral=True)
+
+@tree.command(name="after", description="Upload 'after' pictures and send gallery link to the client.")
+@app_commands.describe(
+    contact_id="The Contact ID for the client.",
+    attachment1="The first 'after' image.",
+    attachment2="The second 'after' image (optional).",
+    attachment3="The third 'after' image (optional).",
+    attachment4="The fourth 'after' image (optional).",
+    attachment5="The fifth 'after' image (optional).",
+    attachment6="The sixth 'after' image (optional).",
+    attachment7="The seventh 'after' image (optional).",
+    attachment8="The eighth 'after' image (optional).",
+    attachment9="The ninth 'after' image (optional).",
+    attachment10="The tenth 'after' image (optional)."
+)
+async def after(
+    interaction: discord.Interaction,
+    contact_id: str,
+    attachment1: discord.Attachment,
+    attachment2: discord.Attachment = None,
+    attachment3: discord.Attachment = None,
+    attachment4: discord.Attachment = None,
+    attachment5: discord.Attachment = None,
+    attachment6: discord.Attachment = None,
+    attachment7: discord.Attachment = None,
+    attachment8: discord.Attachment = None,
+    attachment9: discord.Attachment = None,
+    attachment10: discord.Attachment = None
+):
+    """Handles the upload of 'after' service pictures and sends the gallery link."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.followup.send(f"❌ No customer found with Contact ID: `{contact_id}`. Please check the ID.", ephemeral=True)
+        return
+
+    attachments = [att for att in [attachment1, attachment2, attachment3, attachment4, attachment5, attachment6, attachment7, attachment8, attachment9, attachment10] if att]
+
+    try:
+        downloaded_files = await download_and_store_images(attachments, contact_id, "after")
+
+        if not downloaded_files:
+            await interaction.followup.send("⚠️ No valid images were attached. Please upload image files.", ephemeral=True)
+            return
+            
+        service_apt_num = downloaded_files[0]['service_appointment']
+        
+        # Send gallery link to client via SMS
+        success, result_msg = await send_gallery_link_to_client(contact_id, service_apt_num)
+        
+        response_message = f"✅ Successfully uploaded {len(downloaded_files)} 'after' image(s) for `{contact_id}`.\n"
+        if success:
+            response_message += f"✉️ Gallery link sent to client. View it here: {result_msg}"
+        else:
+            response_message += f"⚠️ **Failed to send gallery link SMS**: {result_msg}"
+            
+        await interaction.followup.send(response_message, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error in /after command: {e}\n{traceback.format_exc()}")
+        await interaction.followup.send(f"❌ An error occurred: {e}", ephemeral=True)
 
 # --- API Endpoints ---
 
