@@ -800,6 +800,28 @@ async def send_gallery_link_to_client(contact_id: str, service_apt_num: int):
     except Exception as e:
         return False, f"An unexpected error occurred in send_gallery_link_to_client: {e}"
 
+def get_membership_details(contact_id: str):
+    """
+    Retrieves personal and membership details for a given contact ID.
+    """
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        raise HTTPException(status_code=404, detail="Contact not found.")
+
+    try:
+        with open(customer_file, "r") as f:
+            customer_data = json.load(f)
+
+        details = {
+            "personal_info": customer_data.get("personal_info", {}),
+            "membership_info": customer_data.get("membership_info", {}),
+            "contact_id": customer_data.get("client_id")
+        }
+        return details
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error(f"Error reading customer data for {contact_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read customer data.")
+
 async def get_service_images_and_details(contact_id: str, service_number: int):
     """
     Scans for images and details for a specific service appointment and returns them.
@@ -1241,6 +1263,10 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
+
+@app.get("/membership/details")
+async def final_get_membership_details(contact_id: str):
+    return get_membership_details(contact_id)
 
 @app.get("/api/service-data/{contact_id}/{service_number}")
 async def final_get_service_data(contact_id: str, service_number: int):
