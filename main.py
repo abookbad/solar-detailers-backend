@@ -827,32 +827,60 @@ def get_dashboard_stats():
     Calculates total revenue and total clients from the payments.json file.
     """
     payments_file = os.path.join("bot_data", "payments.json")
-    total_revenue = 0.0
+    
+    # Initialize stats
+    stats = {
+        "dailyRevenue": 0.0,
+        "weeklyRevenue": 0.0,
+        "monthlyRevenue": 0.0,
+        "totalRevenue": 0.0,
+        "totalClients": 0
+    }
     paid_clients = set()
 
     if not os.path.exists(payments_file):
         logger.warning("payments.json not found. Returning zero stats.")
-        return {"totalRevenue": 0, "totalClients": 0}
+        return stats
 
     try:
         with open(payments_file, "r") as f:
             payments_data = json.load(f)
         
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+        month_start = today_start.replace(day=1)
+
         for payment in payments_data:
             amount = float(payment.get("amount", 0))
             contact_id = payment.get("contact_id")
+            timestamp_str = payment.get("timestamp")
 
             if amount > 0:
-                total_revenue += amount
+                stats["totalRevenue"] += amount
                 if contact_id:
                     paid_clients.add(contact_id)
-                    
+
+                if timestamp_str:
+                    try:
+                        # Assuming timestamp is in ISO 8601 format
+                        payment_time = datetime.fromisoformat(timestamp_str)
+                        
+                        if payment_time >= today_start:
+                            stats["dailyRevenue"] += amount
+                        if payment_time >= week_start:
+                            stats["weeklyRevenue"] += amount
+                        if payment_time >= month_start:
+                            stats["monthlyRevenue"] += amount
+                    except ValueError:
+                        logger.warning(f"Could not parse timestamp: {timestamp_str}")
+
     except (json.JSONDecodeError, IOError, ValueError) as e:
         logger.error(f"Error processing payments.json: {e}")
-        # Return zero stats in case of file corruption or error
-        return {"totalRevenue": 0, "totalClients": 0}
+        return stats # Return zeroed stats in case of error
 
-    return {"totalRevenue": total_revenue, "totalClients": len(paid_clients)}
+    stats["totalClients"] = len(paid_clients)
+    return stats
 
 async def get_service_images_and_details(contact_id: str, service_number: int):
     """
