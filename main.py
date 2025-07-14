@@ -85,8 +85,23 @@ tree = app_commands.CommandTree(client)
 async def on_ready():
     """Event that runs when the bot is ready and connected to Discord."""
     logger.info(f"Logged in as {client.user} (ID: {client.user.id})")
-    await tree.sync()
-    logger.info("Discord slash commands synced successfully.")
+    
+    # Sync commands to a specific guild for instant updates, which is ideal for development.
+    # This avoids the up-to-an-hour cache time for global commands.
+    if client.guilds:
+        # Assuming the bot is primarily used in one guild, as seen elsewhere in the code.
+        guild = client.guilds[0]
+        logger.info(f"Syncing commands to guild: {guild.name} ({guild.id})")
+        # Copy global commands to the guild and sync. This is faster than a global sync.
+        tree.copy_global_to(guild=guild)
+        await tree.sync(guild=guild)
+        logger.info("Discord slash commands synced successfully to guild.")
+    else:
+        logger.warning("Bot is not in any guild. Skipping guild-specific command sync.")
+        # Fallback to global sync if not in any guilds (will take longer to update)
+        await tree.sync()
+        logger.info("Discord slash commands synced globally.")
+
 
 # --- Pydantic Models ---
 # Models updated to match the new webhook structure with a nested "formData" object.
