@@ -157,46 +157,6 @@ class NewServicePayload(BaseModel):
     totalAmount: str
 
 # --- Discord UI Views (for Buttons) ---
-class UpdateImageView(discord.ui.View):
-    def __init__(self, contact_id: str):
-        super().__init__(timeout=300)  # 5 minute timeout
-        self.contact_id = contact_id
-
-    @discord.ui.button(label="Before", style=discord.ButtonStyle.primary, emoji="📸")
-    async def before_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            f"📸 **BEFORE Photos for Contact ID: `{self.contact_id}`**\n\n"
-            "Please upload your BEFORE images by attaching them to your next message in this channel. "
-            "You can upload multiple images at once.",
-            ephemeral=True
-        )
-        # Set a flag to track what type of upload we're expecting
-        # We'll store this in the channel's topic or use a simple dict
-        if not hasattr(client, 'pending_uploads'):
-            client.pending_uploads = {}
-        client.pending_uploads[interaction.channel.id] = {
-            'contact_id': self.contact_id,
-            'type': 'before',
-            'user_id': interaction.user.id
-        }
-
-    @discord.ui.button(label="After", style=discord.ButtonStyle.success, emoji="✨")
-    async def after_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            f"✨ **AFTER Photos for Contact ID: `{self.contact_id}`**\n\n"
-            "Please upload your AFTER images by attaching them to your next message in this channel. "
-            "You can upload multiple images at once. After uploading, I'll process them and send the link to the client.",
-            ephemeral=True
-        )
-        # Set a flag to track what type of upload we're expecting
-        if not hasattr(client, 'pending_uploads'):
-            client.pending_uploads = {}
-        client.pending_uploads[interaction.channel.id] = {
-            'contact_id': self.contact_id,
-            'type': 'after',
-            'user_id': interaction.user.id
-        }
-
 class ConfirmUpdateView(discord.ui.View):
     def __init__(self, contact_id: str, new_data: dict):
         super().__init__(timeout=86400)  # Timeout in seconds (24 hours)
@@ -253,6 +213,25 @@ async def update(interaction: discord.Interaction, contact_id: str):
     )
 
 # --- API Endpoints ---
+
+def _get_contact_id_from_channel(channel_id: int) -> str | None:
+    """Finds the contact ID associated with a given Discord channel ID."""
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        return None
+        
+    for customer_dir in os.listdir(CUSTOMER_DATA_DIR):
+        customer_path = os.path.join(CUSTOMER_DATA_DIR, customer_dir)
+        if os.path.isdir(customer_path):
+            customer_file = os.path.join(customer_path, "customer_data.json")
+            if os.path.exists(customer_file):
+                try:
+                    with open(customer_file, "r") as f:
+                        data = json.load(f)
+                    if data.get("discord_channel_id") == channel_id:
+                        return data.get("client_id")
+                except (json.JSONDecodeError, IOError):
+                    continue
+    return None
 
 def clean_and_format_phone(phone: str) -> str:
     """
