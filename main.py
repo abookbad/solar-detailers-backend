@@ -81,6 +81,13 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
+@client.event
+async def on_ready():
+    """Event that runs when the bot is ready and connected to Discord."""
+    logger.info(f"Logged in as {client.user} (ID: {client.user.id})")
+    await tree.sync()
+    logger.info("Discord slash commands synced successfully.")
+
 # --- Pydantic Models ---
 # Models updated to match the new webhook structure with a nested "formData" object.
 class FormData(BaseModel):
@@ -210,6 +217,25 @@ class ConfirmUpdateView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         await interaction.message.edit(view=self)
+
+@tree.command(name="update", description="Show buttons to update Before/After photos for a client.")
+@app_commands.describe(contact_id="The Contact ID of the client to update photos for.")
+async def update(interaction: discord.Interaction, contact_id: str):
+    """Provides buttons to upload before and after pictures for a given contact."""
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.response.send_message(
+            f"❌ No customer found with Contact ID: `{contact_id}`. Please check the ID and try again.",
+            ephemeral=True
+        )
+        return
+
+    view = UpdateImageView(contact_id=contact_id)
+    await interaction.response.send_message(
+        f"Please select whether you are uploading **Before** or **After** images for contact `{contact_id}`.",
+        view=view,
+        ephemeral=True
+    )
 
 # --- API Endpoints ---
 
