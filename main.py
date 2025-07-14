@@ -86,16 +86,22 @@ async def on_ready():
     """Event that runs when the bot is ready and connected to Discord."""
     logger.info(f"Logged in as {client.user} (ID: {client.user.id})")
     
-    # Sync commands to a specific guild for instant updates, which is ideal for development.
-    # This avoids the up-to-an-hour cache time for global commands.
+    # Sync commands to a specific guild for instant updates.
+    # This process first clears all commands from the guild and then adds the current ones back,
+    # ensuring any stale commands like the old /update are removed.
     if client.guilds:
-        # Assuming the bot is primarily used in one guild, as seen elsewhere in the code.
         guild = client.guilds[0]
-        logger.info(f"Syncing commands to guild: {guild.name} ({guild.id})")
-        # Copy global commands to the guild and sync. This is faster than a global sync.
+        logger.info(f"Force-syncing commands for guild: {guild.name} ({guild.id}) to remove stale commands.")
+
+        # 1. Clear all commands from the guild.
+        tree.clear_commands(guild=guild)
+        await tree.sync(guild=guild)
+
+        # 2. Add the current commands from the code back to the guild and sync.
         tree.copy_global_to(guild=guild)
         await tree.sync(guild=guild)
-        logger.info("Discord slash commands synced successfully to guild.")
+        
+        logger.info("Discord slash commands re-synced successfully to guild.")
     else:
         logger.warning("Bot is not in any guild. Skipping guild-specific command sync.")
         # Fallback to global sync if not in any guilds (will take longer to update)
@@ -794,6 +800,72 @@ async def send_gallery_link_to_client(contact_id: str, service_apt_num: int):
     except Exception as e:
         return False, f"An unexpected error occurred in send_gallery_link_to_client: {e}"
 
+async def get_service_images_and_details(contact_id: str, service_number: int):
+    """
+    Scans for images and details for a specific service appointment and returns them.
+    """
+    logger.info(f"Getting images and details for contact {contact_id}, service #{service_number}")
+    
+    # --- Get Service Details from customer_data.json ---
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        raise HTTPException(status_code=404, detail="Customer data file not found.")
+
+    service_details = {}
+    try:
+        with open(customer_file, "r") as f:
+            customer_data = json.load(f)
+        
+        # Service history is a list, service_number is 1-indexed for humans
+        if 0 < service_number <= len(customer_data.get("service_history", [])):
+            service_record = customer_data["service_history"][service_number - 1]
+            service_details = {
+                "service_date": service_record.get("service_date"),
+                "service_details": service_record.get("service_details"),
+                "quote_amount": service_record.get("quote_amount"),
+                "follow_up_date": service_record.get("follow_up_date")
+            }
+    except (json.JSONDecodeError, IndexError) as e:
+        logger.error(f"Error reading service history for {contact_id}: {e}")
+        # Continue to try and find images, but details will be empty.
+        pass
+
+    # --- Get Images ---
+    service_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id, "images", f"service_apt{service_number}")
+    if not os.path.isdir(service_dir):
+        # If the main service directory doesn't exist, there are no images.
+        return {"service_details": service_details, "images": {"before_images": [], "after_images": []}}
+
+    before_urls = []
+    after_urls = []
+
+    # Get 'before' images
+    before_dir = os.path.join(service_dir, "before")
+    if os.path.isdir(before_dir):
+        for filename in sorted(os.listdir(before_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "before", filename).replace(os.sep, '/')
+                url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                before_urls.append({"url": url, "filename": filename})
+
+    # Get 'after' images
+    after_dir = os.path.join(service_dir, "after")
+    if os.path.isdir(after_dir):
+        for filename in sorted(os.listdir(after_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "after", filename).replace(os.sep, '/')
+                url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                after_urls.append({"url": url, "filename": filename})
+    
+    return {
+        "service_details": service_details,
+        "images": {
+            "before_images": before_urls,
+            "after_images": after_urls
+        }
+    }
+
+
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
     try:
@@ -1169,6 +1241,11 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
+
+@app.get("/api/service-data/{contact_id}/{service_number}")
+async def final_get_service_data(contact_id: str, service_number: int):
+    """Unified endpoint to get both images and details for a service appointment."""
+    return await get_service_images_and_details(contact_id, service_number)
 
 @app.get("/api/images/{contact_id}")
 async def final_get_customer_images(contact_id: str):
