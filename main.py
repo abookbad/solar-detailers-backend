@@ -981,6 +981,121 @@ async def send_review_request_sms(contact_id: str, first_name: str, to_number: s
         error_details = e.response.json() if e.response else "No response body"
         return False, f"Failed to send review request SMS: {error_details}"
 
+def get_dashboard_stats():
+    """
+    Calculates total revenue and total clients from the payments.json file.
+    """
+    payments_file = os.path.join("bot_data", "payments.json")
+    
+    stats = {
+        "dailyRevenue": 0.0,
+        "weeklyRevenue": 0.0,
+        "monthlyRevenue": 0.0,
+        "totalRevenue": 0.0,
+        "totalClients": 0
+    }
+    paid_clients = set()
+
+    if not os.path.exists(payments_file):
+        logger.warning("payments.json not found. Returning zero stats.")
+        return stats
+
+    try:
+        with open(payments_file, "r") as f:
+            payments_data = json.load(f)
+        
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+        month_start = today_start.replace(day=1)
+
+        for payment in payments_data:
+            amount = float(payment.get("amount", 0))
+            contact_id = payment.get("contact_id")
+            date_str = payment.get("date")
+
+            if amount > 0:
+                stats["totalRevenue"] += amount
+                if contact_id:
+                    paid_clients.add(contact_id)
+
+                if date_str:
+                    try:
+                        payment_time = datetime.fromisoformat(date_str)
+                        if payment_time >= today_start:
+                            stats["dailyRevenue"] += amount
+                        if payment_time >= week_start:
+                            stats["weeklyRevenue"] += amount
+                        if payment_time >= month_start:
+                            stats["monthlyRevenue"] += amount
+                    except ValueError:
+                        logger.warning(f"Could not parse date: {date_str}")
+
+    except (json.JSONDecodeError, IOError, ValueError) as e:
+        logger.error(f"Error processing payments.json: {e}")
+        return stats
+
+    stats["totalClients"] = len(paid_clients)
+    return stats
+
+async def get_service_images_and_details(contact_id: str, service_number: int):
+    """
+    Scans for images and details for a specific service appointment and returns them.
+    """
+    logger.info(f"Getting images and details for contact {contact_id}, service #{service_number}")
+    
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        raise HTTPException(status_code=404, detail="Customer data file not found.")
+
+    service_details = {}
+    try:
+        with open(customer_file, "r") as f:
+            customer_data = json.load(f)
+        
+        if 0 < service_number <= len(customer_data.get("service_history", [])):
+            service_record = customer_data["service_history"][service_number - 1]
+            service_details = {
+                "service_date": service_record.get("service_date"),
+                "service_details": service_record.get("service_details"),
+                "quote_amount": service_record.get("quote_amount"),
+                "follow_up_date": service_record.get("follow_up_date")
+            }
+    except (json.JSONDecodeError, IndexError) as e:
+        logger.error(f"Error reading service history for {contact_id}: {e}")
+        pass
+
+    service_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id, "images", f"service_apt{service_number}")
+    if not os.path.isdir(service_dir):
+        return {"service_details": service_details, "images": {"before_images": [], "after_images": []}}
+
+    before_urls = []
+    after_urls = []
+
+    before_dir = os.path.join(service_dir, "before")
+    if os.path.isdir(before_dir):
+        for filename in sorted(os.listdir(before_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "before", filename).replace(os.sep, '/')
+                url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                before_urls.append({"url": url, "filename": filename})
+
+    after_dir = os.path.join(service_dir, "after")
+    if os.path.isdir(after_dir):
+        for filename in sorted(os.listdir(after_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "after", filename).replace(os.sep, '/')
+                url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                after_urls.append({"url": url, "filename": filename})
+    
+    return {
+        "service_details": service_details,
+        "images": {
+            "before_images": before_urls,
+            "after_images": after_urls
+        }
+    }
+
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
     try:
