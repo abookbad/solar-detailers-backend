@@ -212,16 +212,18 @@ class UpdateSelectView(discord.ui.View):
     def __init__(self, contact_id: str):
         super().__init__(timeout=180)
         self.contact_id = contact_id
-        options = [
+
+    @discord.ui.select(
+        placeholder="Choose a field to update...",
+        options=[
             discord.SelectOption(label="Name", description="Update the client's full name."),
             discord.SelectOption(label="Phone Number", description="Update the client's phone number."),
             discord.SelectOption(label="Price Per Panel", description="Update the price per panel for the latest service."),
             discord.SelectOption(label="# of Panels", description="Update the panel count for the latest service."),
             discord.SelectOption(label="Quoted Price", description="Update the total quoted price for the latest service."),
-        ]
-        self.add_item(discord.ui.Select(placeholder="Choose a field to update...", options=options, custom_id="update_select"))
-
-    @discord.ui.select(custom_id="update_select")
+        ],
+        custom_id="update_select"
+    )
     async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
         field_to_update = select.values[0]
         modal = UpdateValueModal(contact_id=self.contact_id, field_to_update=field_to_update)
@@ -327,6 +329,45 @@ async def update(interaction: discord.Interaction):
         
     view = UpdateSelectView(contact_id)
     await interaction.response.send_message("Please select the information you would like to update:", view=view, ephemeral=True)
+
+@tree.command(name="review", description="Sends a Google review link to the client.")
+async def review(interaction: discord.Interaction):
+    """Sends a review link to the client associated with the current channel."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    contact_id = _get_contact_id_from_channel(interaction.channel.id)
+    if not contact_id:
+        await interaction.followup.send("❌ This command can only be used in a client's dedicated channel.", ephemeral=True)
+        return
+        
+    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
+    if not os.path.exists(customer_file):
+        await interaction.followup.send(f"❌ Customer data file not found for contact ID: `{contact_id}`.", ephemeral=True)
+        return
+        
+    try:
+        with open(customer_file, "r") as f:
+            customer_data = json.load(f)
+        
+        p_info = customer_data.get("personal_info", {})
+        first_name = p_info.get("first_name")
+        phone_number = p_info.get("phone_number")
+        
+        if not all([first_name, phone_number]):
+            await interaction.followup.send("❌ This client is missing a first name or phone number in their file.", ephemeral=True)
+            return
+
+        success, message = await send_review_request_sms(contact_id, first_name, phone_number)
+        
+        if success:
+            await interaction.followup.send(f"✅ Successfully sent a review link to {first_name}.", ephemeral=True)
+            await interaction.channel.send(f"✉️ A Google review link has been sent to the client by {interaction.user.mention}.")
+        else:
+            await interaction.followup.send(f"⚠️ Failed to send review link: {message}", ephemeral=True)
+            
+    except (IOError, json.JSONDecodeError) as e:
+        logger.error(f"Error handling /review command for {contact_id}: {e}")
+        await interaction.followup.send("❌ An error occurred while reading the client's data file.", ephemeral=True)
 
 @tree.command(name="before", description="Initiates the process for uploading 'before' service pictures.")
 async def before(interaction: discord.Interaction):
@@ -902,154 +943,43 @@ async def send_gallery_link_to_client(contact_id: str, service_apt_num: int):
     except Exception as e:
         return False, f"An unexpected error occurred in send_gallery_link_to_client: {e}"
 
-def get_membership_details(contact_id: str):
-    """
-    Retrieves personal and membership details for a given contact ID.
-    """
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
-    if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Contact not found.")
-
-    try:
-        with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-
-        details = {
-            "personal_info": customer_data.get("personal_info", {}),
-            "membership_info": customer_data.get("membership_info", {}),
-            "contact_id": customer_data.get("client_id")
-        }
-        return details
-    except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"Error reading customer data for {contact_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to read customer data.")
-
-def get_dashboard_stats():
-    """
-    Calculates total revenue and total clients from the payments.json file.
-    """
-    payments_file = os.path.join("bot_data", "payments.json")
+async def send_review_request_sms(contact_id: str, first_name: str, to_number: str):
+    """Sends the Google review link request via GHL SMS."""
     
-    # Initialize stats
-    stats = {
-        "dailyRevenue": 0.0,
-        "weeklyRevenue": 0.0,
-        "monthlyRevenue": 0.0,
-        "totalRevenue": 0.0,
-        "totalClients": 0
-    }
-    paid_clients = set()
-
-    if not os.path.exists(payments_file):
-        logger.warning("payments.json not found. Returning zero stats.")
-        return stats
-
-    try:
-        with open(payments_file, "r") as f:
-            payments_data = json.load(f)
-        
-        now = datetime.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = today_start - timedelta(days=now.weekday())
-        month_start = today_start.replace(day=1)
-
-        for payment in payments_data:
-            amount = float(payment.get("amount", 0))
-            contact_id = payment.get("contact_id")
-            # Correctly look for the 'date' field instead of 'timestamp'
-            date_str = payment.get("date")
-
-            if amount > 0:
-                stats["totalRevenue"] += amount
-                if contact_id:
-                    paid_clients.add(contact_id)
-
-                if date_str:
-                    try:
-                        # The format is ISO 8601, so fromisoformat is appropriate
-                        payment_time = datetime.fromisoformat(date_str)
-                        
-                        if payment_time >= today_start:
-                            stats["dailyRevenue"] += amount
-                        if payment_time >= week_start:
-                            stats["weeklyRevenue"] += amount
-                        if payment_time >= month_start:
-                            stats["monthlyRevenue"] += amount
-                    except ValueError:
-                        logger.warning(f"Could not parse date: {date_str}")
-
-    except (json.JSONDecodeError, IOError, ValueError) as e:
-        logger.error(f"Error processing payments.json: {e}")
-        return stats # Return zeroed stats in case of error
-
-    stats["totalClients"] = len(paid_clients)
-    return stats
-
-async def get_service_images_and_details(contact_id: str, service_number: int):
-    """
-    Scans for images and details for a specific service appointment and returns them.
-    """
-    logger.info(f"Getting images and details for contact {contact_id}, service #{service_number}")
+    formatted_phone = clean_and_format_phone(to_number)
+    if not formatted_phone:
+        return False, "Invalid or empty phone number provided."
     
-    # --- Get Service Details from customer_data.json ---
-    customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
-    if not os.path.exists(customer_file):
-        raise HTTPException(status_code=404, detail="Customer data file not found.")
+    review_link = "https://g.page/r/CRWEFyWyuQ5qEAI/review"
+    message = (
+        f"Hi {first_name}, thank you for choosing Solar Detail!\n\n"
+        "We'd love to hear about your experience. Please take a moment to leave us a review:\n"
+        f"{review_link}\n\n"
+        "Your feedback helps us improve!"
+    )
 
-    service_details = {}
-    try:
-        with open(customer_file, "r") as f:
-            customer_data = json.load(f)
-        
-        # Service history is a list, service_number is 1-indexed for humans
-        if 0 < service_number <= len(customer_data.get("service_history", [])):
-            service_record = customer_data["service_history"][service_number - 1]
-            service_details = {
-                "service_date": service_record.get("service_date"),
-                "service_details": service_record.get("service_details"),
-                "quote_amount": service_record.get("quote_amount"),
-                "follow_up_date": service_record.get("follow_up_date")
-            }
-    except (json.JSONDecodeError, IndexError) as e:
-        logger.error(f"Error reading service history for {contact_id}: {e}")
-        # Continue to try and find images, but details will be empty.
-        pass
-
-    # --- Get Images ---
-    service_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id, "images", f"service_apt{service_number}")
-    if not os.path.isdir(service_dir):
-        # If the main service directory doesn't exist, there are no images.
-        return {"service_details": service_details, "images": {"before_images": [], "after_images": []}}
-
-    before_urls = []
-    after_urls = []
-
-    # Get 'before' images
-    before_dir = os.path.join(service_dir, "before")
-    if os.path.isdir(before_dir):
-        for filename in sorted(os.listdir(before_dir)):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "before", filename).replace(os.sep, '/')
-                url = f"{SERVER_BASE_URL}/images/{relative_path}"
-                before_urls.append({"url": url, "filename": filename})
-
-    # Get 'after' images
-    after_dir = os.path.join(service_dir, "after")
-    if os.path.isdir(after_dir):
-        for filename in sorted(os.listdir(after_dir)):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                relative_path = os.path.join(contact_id, "images", f"service_apt{service_number}", "after", filename).replace(os.sep, '/')
-                url = f"{SERVER_BASE_URL}/images/{relative_path}"
-                after_urls.append({"url": url, "filename": filename})
-    
-    return {
-        "service_details": service_details,
-        "images": {
-            "before_images": before_urls,
-            "after_images": after_urls
-        }
+    headers = {
+        "Authorization": f"Bearer {GHL_CONVERSATIONS_TOKEN}",
+        "Version": "2021-04-15",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
 
+    payload = {
+        "type": "SMS",
+        "contactId": contact_id,
+        "fromNumber": GHL_SMS_FROM_NUMBER,
+        "toNumber": formatted_phone,
+        "message": message
+    }
+
+    try:
+        response = requests.post("https://services.leadconnectorhq.com/conversations/messages", headers=headers, json=payload)
+        response.raise_for_status()
+        return True, "Review request SMS sent successfully."
+    except requests.exceptions.RequestException as e:
+        error_details = e.response.json() if e.response else "No response body"
+        return False, f"Failed to send review request SMS: {error_details}"
 
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
