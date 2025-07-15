@@ -1286,6 +1286,44 @@ async def get_random_after_image():
     
     return {"imageUrl": random_image_url}
 
+async def get_random_after_images(count: int):
+    """
+    Scans all customer directories to find all 'after' images and returns a
+    unique list of randomly selected ones.
+    """
+    import random
+    all_after_images = []
+    
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        raise HTTPException(status_code=500, detail="Customer data directory not found.")
+
+    # This logic is the same as the single image function
+    for contact_id in os.listdir(CUSTOMER_DATA_DIR):
+        contact_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
+        if os.path.isdir(contact_dir):
+            images_dir = os.path.join(contact_dir, "images")
+            if os.path.isdir(images_dir):
+                for service_apt_dir in os.listdir(images_dir):
+                    if os.path.isdir(os.path.join(images_dir, service_apt_dir)):
+                        after_dir = os.path.join(images_dir, service_apt_dir, "after")
+                        if os.path.isdir(after_dir):
+                            for filename in os.listdir(after_dir):
+                                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                    relative_path = os.path.join(contact_id, "images", service_apt_dir, "after", filename).replace(os.sep, '/')
+                                    url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                                    all_after_images.append(url)
+
+    if not all_after_images:
+        raise HTTPException(status_code=404, detail="No 'after' images found.")
+
+    # Ensure we don't request more images than are available
+    num_to_sample = min(count, len(all_after_images))
+    
+    # Use random.sample to get a unique list of images
+    random_image_urls = random.sample(all_after_images, num_to_sample)
+    
+    return {"imageUrls": random_image_urls}
+
 
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
@@ -1678,6 +1716,10 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
+
+@app.get("/api/random-images")
+async def final_get_random_after_images(count: int = 5):
+    return await get_random_after_images(count)
 
 @app.get("/api/random-image")
 async def final_get_random_after_image():
