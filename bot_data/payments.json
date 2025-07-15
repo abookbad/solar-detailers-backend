@@ -178,5 +178,17 @@
         "amount": 0.0,
         "channel_id": 1392403051066822747,
         "date": "2025-07-13T03:56:48.117284"
+    },
+    {
+        "contact_id": "Q44ixv95mNtCnHpCT38C",
+        "amount": 225.0,
+        "channel_id": 1394483108417503254,
+        "date": "2025-07-15T17:47:13.654820"
+    },
+    {
+        "contact_id": "Vu8DLv0iaDDwsdxMG1Py",
+        "amount": 300.0,
+        "channel_id": 1394435375476244600,
+        "date": "2025-07-15T17:47:50.815190"
     }
 ]

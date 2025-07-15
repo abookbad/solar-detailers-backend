@@ -1,0 +1,32 @@
+{
+    "client_id": "Vu8DLv0iaDDwsdxMG1Py",
+    "personal_info": {
+        "first_name": "Ernest",
+        "last_name": "Johnson",
+        "email": "",
+        "phone_number": "+13016670147",
+        "address": "15660 Athena Drive, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-14T21:48:20.655166",
+            "quote_amount": 300.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 20,
+                "price_per_panel": "15"
+            },
+            "follow_up_date": "2025-10-12T21:48:20.655166"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-14T21:48:20.655371",
+    "discord_channel_id": 1394435375476244600
+}
