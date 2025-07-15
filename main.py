@@ -386,35 +386,92 @@ async def review(interaction: discord.Interaction):
     if not contact_id:
         await interaction.followup.send("❌ This command can only be used in a client's dedicated channel.", ephemeral=True)
         return
-        
+
     customer_file = os.path.join(CUSTOMER_DATA_DIR, contact_id, "customer_data.json")
     if not os.path.exists(customer_file):
         await interaction.followup.send(f"❌ Customer data file not found for contact ID: `{contact_id}`.", ephemeral=True)
         return
-        
+
     try:
         with open(customer_file, "r") as f:
             customer_data = json.load(f)
-        
+
         p_info = customer_data.get("personal_info", {})
         first_name = p_info.get("first_name")
         phone_number = p_info.get("phone_number")
-        
+
         if not all([first_name, phone_number]):
             await interaction.followup.send("❌ This client is missing a first name or phone number in their file.", ephemeral=True)
             return
 
         success, message = await send_review_request_sms(contact_id, first_name, phone_number)
-        
+
         if success:
             await interaction.followup.send(f"✅ Successfully sent a review link to {first_name}.", ephemeral=True)
             await interaction.channel.send(f"✉️ A Google review link has been sent to the client by {interaction.user.mention}.")
         else:
             await interaction.followup.send(f"⚠️ Failed to send review link: {message}", ephemeral=True)
-            
+
     except (IOError, json.JSONDecodeError) as e:
         logger.error(f"Error handling /review command for {contact_id}: {e}")
         await interaction.followup.send("❌ An error occurred while reading the client's data file.", ephemeral=True)
+
+@tree.command(name="paid", description="Logs a payment for the client and shows updated revenue totals.")
+@app_commands.describe(amount="The payment amount received.")
+async def paid(interaction: discord.Interaction, amount: float):
+    """Logs a payment and displays revenue stats."""
+    await interaction.response.defer(ephemeral=False, thinking=True)
+
+    contact_id = _get_contact_id_from_channel(interaction.channel.id)
+    if not contact_id:
+        await interaction.followup.send("❌ This command can only be used in a client's dedicated channel.", ephemeral=True)
+        return
+
+    payments_file = os.path.join("bot_data", "payments.json")
+
+    # --- Load existing payments ---
+    try:
+        if os.path.exists(payments_file) and os.path.getsize(payments_file) > 0:
+            with open(payments_file, "r") as f:
+                payments_data = json.load(f)
+        else:
+            payments_data = []
+    except (IOError, json.JSONDecodeError):
+        payments_data = []
+
+    # --- Add new payment ---
+    new_payment = {
+        "contact_id": contact_id,
+        "amount": amount,
+        "channel_id": interaction.channel.id,
+        "date": datetime.utcnow().isoformat()
+    }
+    payments_data.append(new_payment)
+
+    # --- Save updated payments ---
+    try:
+        with open(payments_file, "w") as f:
+            json.dump(payments_data, f, indent=4)
+    except IOError as e:
+        logger.error(f"Failed to write to payments.json: {e}")
+        await interaction.followup.send("❌ An error occurred while saving the payment record.", ephemeral=True)
+        return
+
+    # --- Calculate and display stats ---
+    stats = get_dashboard_stats()
+
+    response_message = (
+        f"✅ **Payment Logged!**\n\n"
+        f"Amount: `${amount:,.2f}`\n"
+        f"Client ID: `{contact_id}`\n\n"
+        f"--- **Revenue Update** ---\n"
+        f"Today: `${stats['dailyRevenue']:,.2f}`\n"
+        f"This Week: `${stats['weeklyRevenue']:,.2f}`\n"
+        f"This Month: `${stats['monthlyRevenue']:,.2f}`\n"
+        f"**Total Revenue:** **`${stats['totalRevenue']:,.2f}`**"
+    )
+
+    await interaction.followup.send(response_message)
 
 @tree.command(name="before", description="Initiates the process for uploading 'before' service pictures.")
 async def before(interaction: discord.Interaction):
@@ -1389,10 +1446,9 @@ async def create_customer_channel_and_post(customer_data: dict):
         else:
             price_per_panel = service_details.get("price_per_panel", "N/A")
             panel_count = service_details.get('panel_count', 0)
-            panel_count_str = f"{panel_count:03d}" if isinstance(panel_count, int) else str(panel_count)
             quote_amount = s_info.get("quote_amount", 0.0)
             
-            message3_content += f"**Price Per Panel:** ${price_per_panel} | **# of Panels:** {panel_count_str}\n"
+            message3_content += f"**Price Per Panel:** ${price_per_panel} | **# of Panels:** {panel_count}\n"
             message3_content += f"**Quoted:** ${quote_amount:.2f}\n\n"
 
         message3_content += f"**Add to Contacts:** [Click to Download]({vcard_url})\n"
@@ -1503,7 +1559,7 @@ async def create_customer(payload: VercelWebhookPayload):
                     quote_amount = float(cleaned_amount)
             except (ValueError, TypeError):
                 quote_amount = 0.0
-                
+
         customer_data = {
             "client_id": contact_id,  # GHL Contact ID is the main ID
             "personal_info": {
