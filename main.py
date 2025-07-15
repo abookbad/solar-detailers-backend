@@ -545,8 +545,48 @@ def format_phone_for_display(phone: str) -> str:
     return phone
 
 # --- Helper Functions ---
-def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> str | None:
-    """Creates a contact in GHL and returns the contact ID."""
+def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: str, address: str, city: str) -> bool:
+    """Updates an existing contact in GHL using their contact ID."""
+    
+    headers = {
+        "Authorization": f"Bearer {GHL_API_TOKEN}",
+        "Version": "2021-07-28",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
+    payload = {
+        "firstName": first_name,
+        "lastName": last_name,
+        "phone": phone,
+        "address1": address,
+        "city": city,
+        "source": "public api"
+    }
+    
+    update_url = f"{GHL_API_BASE_URL}/contacts/{contact_id}"
+    
+    try:
+        response = requests.put(update_url, headers=headers, json=payload)
+        response.raise_for_status()
+        logger.info(f"Successfully updated GHL contact with ID: {contact_id}")
+        return True
+    except requests.exceptions.RequestException as e:
+        error_details = "No response body"
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_details = e.response.json()
+            except json.JSONDecodeError:
+                error_details = e.response.text
+        logger.error(f"Failed to update GHL contact {contact_id}. Error: {e}, Details: {error_details}")
+        return False
+
+def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> tuple[str | None, bool]:
+    """
+    Creates a contact in GHL.
+    Returns a tuple of (contact_id, is_new).
+    If a duplicate is found, it returns the existing contact_id and is_new=False.
+    """
     
     # Phone number should arrive pre-formatted from the endpoint.
     formatted_phone = phone
@@ -576,20 +616,25 @@ def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str
         contact_id = data.get("contact", {}).get("id")
         if contact_id:
             logger.info(f"Successfully created GHL contact with ID: {contact_id}")
-            return contact_id
+            return contact_id, True
         else:
             logger.error(f"GHL contact creation succeeded but no ID was returned. Response: {data}")
-            return None
+            return None, False
             
     except requests.exceptions.RequestException as e:
         error_details = "No response body"
         if hasattr(e, 'response') and e.response is not None:
             try:
                 error_details = e.response.json()
+                if e.response.status_code == 400 and 'This location does not allow duplicated contacts' in error_details.get('message', ''):
+                    contact_id = error_details.get('meta', {}).get('contactId')
+                    if contact_id:
+                        logger.info(f"Duplicate contact detected. Found existing GHL contact with ID: {contact_id}")
+                        return contact_id, False # It's an existing contact
             except json.JSONDecodeError:
                 error_details = e.response.text
         logger.error(f"Failed to create GHL contact. Error: {e}, Details: {error_details}")
-        return None
+        return None, False
 
 def get_ghl_contact_id(phone: str) -> str | None:
     """Looks up a contact in GHL by phone number and returns their ID."""
@@ -1143,6 +1188,41 @@ async def get_service_images_and_details(contact_id: str, service_number: int):
         }
     }
 
+async def get_random_after_image():
+    """
+    Scans all customer directories to find all 'after' images and returns a
+    randomly selected one.
+    """
+    import random
+    all_after_images = []
+    
+    if not os.path.exists(CUSTOMER_DATA_DIR):
+        raise HTTPException(status_code=500, detail="Customer data directory not found.")
+
+    for contact_id in os.listdir(CUSTOMER_DATA_DIR):
+        contact_dir = os.path.join(CUSTOMER_DATA_DIR, contact_id)
+        if os.path.isdir(contact_dir):
+            images_dir = os.path.join(contact_dir, "images")
+            if os.path.isdir(images_dir):
+                for service_apt_dir in os.listdir(images_dir):
+                    if os.path.isdir(os.path.join(images_dir, service_apt_dir)):
+                        after_dir = os.path.join(images_dir, service_apt_dir, "after")
+                        if os.path.isdir(after_dir):
+                            for filename in os.listdir(after_dir):
+                                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                    # Construct the full public URL
+                                    relative_path = os.path.join(contact_id, "images", service_apt_dir, "after", filename).replace(os.sep, '/')
+                                    url = f"{SERVER_BASE_URL}/images/{relative_path}"
+                                    all_after_images.append(url)
+
+    if not all_after_images:
+        raise HTTPException(status_code=404, detail="No 'after' images found anywhere.")
+
+    random_image_url = random.choice(all_after_images)
+    
+    return {"imageUrl": random_image_url}
+
+
 async def check_contact_exists_in_dashboard(contact_id: str):
     """Check if contactId exists in the customer dashboard system."""
     try:
@@ -1334,6 +1414,7 @@ async def create_customer_channel_and_post(customer_data: dict):
 async def create_customer(payload: VercelWebhookPayload):
     """
     Webhook to create a GHL contact, then create a customer folder using the GHL ID.
+    If a duplicate contact is found in GHL, it updates the existing record.
     If no phone is provided, a local record is created without GHL integration.
     """
     logger.info(f"Received new customer payload: {payload.formData.model_dump_json(exclude_none=True)}")
@@ -1347,14 +1428,14 @@ async def create_customer(payload: VercelWebhookPayload):
         last_name_to_use = form_data.lastName if form_data.lastName else form_data.lastInitial or ""
 
 
-        # Conditionally create GHL contact if a phone number is provided
+        # Conditionally create/update GHL contact if a phone number is provided
         if form_data.phone:
             cleaned_phone = clean_and_format_phone(form_data.phone)
             if not cleaned_phone:
                 raise HTTPException(status_code=400, detail="The provided phone number is invalid.")
             
-            logger.info("Phone number provided. Attempting to create GHL contact...")
-            contact_id = create_ghl_contact(
+            logger.info("Phone number provided. Attempting to create or find GHL contact...")
+            contact_id, is_new = create_ghl_contact(
                 first_name=form_data.firstName,
                 last_name=last_name_to_use,
                 phone=cleaned_phone,
@@ -1366,8 +1447,22 @@ async def create_customer(payload: VercelWebhookPayload):
                 logger.error("create_ghl_contact returned None. Aborting.")
                 raise HTTPException(
                     status_code=500, 
-                    detail="Failed to create contact in GoHighLevel. Contact ID was not returned."
+                    detail="Failed to create or find contact in GoHighLevel."
                 )
+
+            if not is_new:
+                logger.info(f"Contact {contact_id} already exists in GHL, attempting to update.")
+                update_success = update_ghl_contact(
+                    contact_id=contact_id,
+                    first_name=form_data.firstName,
+                    last_name=last_name_to_use,
+                    phone=cleaned_phone,
+                    address=form_data.streetAddress,
+                    city=form_data.city
+                )
+                if not update_success:
+                    logger.warning(f"Failed to update contact {contact_id} in GHL, but proceeding with local creation anyway.")
+
         else:
             # No phone number, so create a local-only contact with a new UUID.
             logger.info("No phone number provided. Creating a local contact with a new UUID.")
@@ -1520,6 +1615,10 @@ async def add_new_service_to_customer(payload: NewServicePayload):
 
 # --- Final API Endpoint Definitions ---
 # It's good practice to define routes after the functions they call.
+
+@app.get("/api/random-image")
+async def final_get_random_after_image():
+    return await get_random_after_image()
 
 @app.get("/api/dashboard-stats")
 async def final_get_dashboard_stats():
