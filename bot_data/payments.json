@@ -190,5 +190,23 @@
         "amount": 300.0,
         "channel_id": 1394435375476244600,
         "date": "2025-07-14T17:47:50.815190"
+    },
+    {
+        "contact_id": "ufboeg0vdceSTNTkjUnJ",
+        "amount": 0.0,
+        "channel_id": 1394515033307742405,
+        "date": "2025-07-15T18:01:31.235764"
+    },
+    {
+        "contact_id": "Q44ixv95mNtCnHpCT38C",
+        "amount": 0.0,
+        "channel_id": 1394483108417503254,
+        "date": "2025-07-15T18:02:09.329434"
+    },
+    {
+        "contact_id": "Vu8DLv0iaDDwsdxMG1Py",
+        "amount": 0.0,
+        "channel_id": 1394435375476244600,
+        "date": "2025-07-15T18:02:16.796638"
     }
 ]
