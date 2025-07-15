@@ -473,6 +473,13 @@ async def paid(interaction: discord.Interaction, amount: float):
 
     await interaction.followup.send(response_message)
 
+    # --- Prompt for archive ---
+    archive_view = ConfirmDeleteChannelView(contact_id=contact_id)
+    await interaction.channel.send(
+        "✅ Transaction complete. You may now archive this channel.", 
+        view=archive_view
+    )
+
 @tree.command(name="before", description="Initiates the process for uploading 'before' service pictures.")
 async def before(interaction: discord.Interaction):
     """Asks the user to upload 'before' pictures for the client of the current channel."""
