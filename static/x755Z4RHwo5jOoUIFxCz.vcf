@@ -3,8 +3,7 @@ VERSION:3.0
 ADR;TYPE=HOME:;;1738 Drew Place\, Claremont;;;;
 FN:Ali Hnyin
 N:Hnyin;Ali;;;
-NOTE:Services:\n- Solar Panel Cleaning\n- Pigeon Meshing\n# of Panels: 10\n
- $ Quoted: $130.00
+NOTE:Services:\n- Solar Panel Cleaning\n# of Panels: 10\n$ Quoted: $130.00
 ORG:Solar Detail
 TEL;TYPE=CELL:+19295367557
 END:VCARD

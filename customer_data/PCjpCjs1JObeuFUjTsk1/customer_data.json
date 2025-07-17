@@ -1,0 +1,33 @@
+{
+    "client_id": "PCjpCjs1JObeuFUjTsk1",
+    "personal_info": {
+        "first_name": "Federico",
+        "last_name": "Rodriguez",
+        "email": "",
+        "phone_number": "+19095652594",
+        "address": "15578 Greta Lane, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-16T00:04:07.644909",
+            "quote_amount": 540.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 20,
+                "price_per_panel": "27"
+            },
+            "follow_up_date": "2025-10-14T00:04:07.644909"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-16T00:04:07.644960",
+    "discord_channel_id": 1394831934399451197,
+    "archived_in_thread_id": 1394857585089319104
+}
