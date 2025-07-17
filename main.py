@@ -1738,6 +1738,14 @@ async def final_get_service_data(contact_id: str, service_number: int):
     """Unified endpoint to get both images and details for a service appointment."""
     return await get_service_images_and_details(contact_id, service_number)
 
+@app.get("/api/payments")
+async def get_payments_data():
+    payments_file = os.path.join("bot_data", "payments.json")
+    if not os.path.exists(payments_file):
+        return []
+    with open(payments_file, "r") as f:
+        return json.load(f)
+
 @app.get("/api/images/{contact_id}")
 async def final_get_customer_images(contact_id: str):
     return await get_customer_images(contact_id)
