@@ -1,0 +1,32 @@
+{
+    "client_id": "PD1zrSDmfRNPsEThnomx",
+    "personal_info": {
+        "first_name": "Marta",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+19099693758",
+        "address": "15643 Eastwind Avenue, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-18T00:00:14.004934",
+            "quote_amount": 459.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 27,
+                "price_per_panel": "17"
+            },
+            "follow_up_date": "2025-10-16T00:00:14.004934"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-18T00:00:14.005021",
+    "discord_channel_id": 1395555729913675929
+}
