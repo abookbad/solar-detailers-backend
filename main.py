@@ -290,6 +290,7 @@ class FormData(BaseModel):
     pigeonMeshing: bool | None = None
     pricePerPanel: str | None = None
     totalAmount: str | None = None
+    source: str | None = None
 
 class VercelWebhookPayload(BaseModel):
     formData: FormData
@@ -1479,7 +1480,8 @@ async def create_customer_channel_and_post(customer_data: dict):
         # --- Message 1: Name, Phone, Address Label ---
         message1_content = ""
         if is_natural_booking:
-            message1_content += "**New Client Through Natural Booking**\n"
+            source = customer_data.get("source", "Organic")
+            message1_content += f"**New Client Through Natural Booking (Source: {source})**\n"
         
         message1_content += f"**Name:** {full_name}\n"
         message1_content += f"**Phone Number:** {format_phone_for_display(phone_number)}\n"
@@ -1626,6 +1628,7 @@ async def create_customer(payload: VercelWebhookPayload):
                 "phone_number": cleaned_phone,
                 "address": full_address,
             },
+            "source": form_data.source or "Unknown",
             "service_history": [
                 {
                     "service_date": service_date.isoformat(),
