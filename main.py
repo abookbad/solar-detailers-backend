@@ -1500,14 +1500,14 @@ async def create_customer_channel_and_post(customer_data: dict):
             
             services_text = "both" if len(services) == 2 else services[0] if len(services) == 1 else "N/A"
 
-            message3_content += f"**# of Panels:** {service_details.get('panel_count', 'N/A')}\n"
+            message3_content += f"**Number of Panels:** {service_details.get('panel_count', 'N/A')}\n"
             message3_content += f"**Services Requested:** {services_text}\n\n"
         else:
             price_per_panel = service_details.get("price_per_panel", "N/A")
             panel_count = service_details.get('panel_count', 0)
             quote_amount = s_info.get("quote_amount", 0.0)
             
-            message3_content += f"**Price Per Panel:** ${price_per_panel} | **# of Panels:** {panel_count}\n"
+            message3_content += f"**Price Per Panel:** ${price_per_panel} | **Number of Panels:** {panel_count}\n"
             message3_content += f"**Quoted:** ${quote_amount:.2f}\n\n"
 
         message3_content += f"**Add to Contacts:** [Click to Download]({vcard_url})\n"
