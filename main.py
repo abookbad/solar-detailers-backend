@@ -1784,3 +1784,52 @@ async def startup_event():
     asyncio.create_task(client.start(BOT_TOKEN))
     # Start the scheduler
     scheduler.start()
+
+class ConfirmDeleteView(discord.ui.View):
+    def __init__(self, contact_id: str):
+        super().__init__(timeout=60)
+        self.contact_id = contact_id
+
+    @discord.ui.button(label="Confirm Deletion", style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        customer_dir = os.path.join(CUSTOMER_DATA_DIR, self.contact_id)
+        channel_name = interaction.channel.name
+
+        try:
+            if os.path.exists(customer_dir):
+                import shutil
+                shutil.rmtree(customer_dir)
+            
+            await interaction.channel.delete(reason=f"Deleted by {interaction.user.name}")
+            
+            # Send a confirmation in the parent category or a log channel if possible
+            # This part is optional and depends on where you want logs to go.
+            # For now, we'll just log it to the console.
+            logger.info(f"Successfully deleted channel {channel_name} and data for contact {self.contact_id}.")
+
+        except Exception as e:
+            await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.message.delete()
+        await interaction.response.send_message("Deletion cancelled.", ephemeral=True, delete_after=5)
+
+@tree.command(name="delete", description="Deletes the client channel and all associated data.")
+async def delete(interaction: discord.Interaction):
+    """Deletes the current channel and all data for the associated client."""
+    contact_id = _get_contact_id_from_channel(interaction.channel.id)
+    if not contact_id:
+        await interaction.response.send_message(
+            "❌ This command can only be used in a client's dedicated channel.",
+            ephemeral=True
+        )
+        return
+
+    view = ConfirmDeleteView(contact_id)
+    await interaction.response.send_message(
+        "**⚠️ Are you sure you want to permanently delete this client?**\n"
+        "This will delete the channel and all associated data, including images and service history. This action cannot be undone.",
+        view=view,
+        ephemeral=True
+    )
