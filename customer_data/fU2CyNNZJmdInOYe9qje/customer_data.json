@@ -1,0 +1,32 @@
+{
+    "client_id": "fU2CyNNZJmdInOYe9qje",
+    "personal_info": {
+        "first_name": "Jesus ",
+        "last_name": "Segura ",
+        "email": "",
+        "phone_number": "+19514409984",
+        "address": "346 E Alvarado st , Pomona ca"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-22T17:29:10.016767",
+            "quote_amount": 130.0,
+            "service_details": {
+                "solar_cleaning": true,
+                "pigeon_meshing": false,
+                "panel_count": 10,
+                "price_per_panel": "13"
+            },
+            "follow_up_date": "2025-10-20T17:29:10.016767"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-22T17:29:10.016816",
+    "discord_channel_id": 1397269254503403590
+}

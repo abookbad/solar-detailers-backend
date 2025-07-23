@@ -1,0 +1,32 @@
+{
+    "client_id": "P7sbXvLrvte8mvBJrF5g",
+    "personal_info": {
+        "first_name": "Daniel ",
+        "last_name": "F",
+        "email": "",
+        "phone_number": "+13109917162",
+        "address": "Fairchild Avenue, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-19T01:39:05.738606",
+            "quote_amount": 504.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 28,
+                "price_per_panel": "18"
+            },
+            "follow_up_date": "2025-10-17T01:39:05.738606"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-19T01:39:05.738641",
+    "discord_channel_id": 1395942997291696239
+}

@@ -1,0 +1,32 @@
+{
+    "client_id": "mIKNhM1o1N5AeIw6dFSn",
+    "personal_info": {
+        "first_name": "Omar",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+19097574694",
+        "address": "6355 Sonterra Court, Rancho Cucamonga"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-22T01:38:21.695415",
+            "quote_amount": 612.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 34,
+                "price_per_panel": "18"
+            },
+            "follow_up_date": "2025-10-20T01:38:21.695415"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-22T01:38:21.695469",
+    "discord_channel_id": 1397029976452239360
+}

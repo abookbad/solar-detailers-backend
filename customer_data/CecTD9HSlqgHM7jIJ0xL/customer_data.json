@@ -1,0 +1,32 @@
+{
+    "client_id": "CecTD9HSlqgHM7jIJ0xL",
+    "personal_info": {
+        "first_name": "Aura",
+        "last_name": "M",
+        "email": "",
+        "phone_number": "+19099047741",
+        "address": "15185 Bluffview Street, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-19T02:20:14.067370",
+            "quote_amount": 408.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 24,
+                "price_per_panel": "17"
+            },
+            "follow_up_date": "2025-10-17T02:20:14.067370"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-19T02:20:14.067420",
+    "discord_channel_id": 1395953350524276930
+}

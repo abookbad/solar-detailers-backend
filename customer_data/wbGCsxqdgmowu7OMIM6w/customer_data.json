@@ -1,0 +1,32 @@
+{
+    "client_id": "wbGCsxqdgmowu7OMIM6w",
+    "personal_info": {
+        "first_name": "David",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+16268621983",
+        "address": "7364 Foxglove Place, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-22T00:29:30.503599",
+            "quote_amount": 0.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 20,
+                "price_per_panel": "0"
+            },
+            "follow_up_date": "2025-10-20T00:29:30.503599"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-22T00:29:30.503651",
+    "discord_channel_id": 1397012649014853703
+}

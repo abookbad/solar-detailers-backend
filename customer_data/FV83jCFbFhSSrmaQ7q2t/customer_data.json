@@ -1,0 +1,32 @@
+{
+    "client_id": "FV83jCFbFhSSrmaQ7q2t",
+    "personal_info": {
+        "first_name": "Wilmer ",
+        "last_name": "H",
+        "email": "",
+        "phone_number": "+19097827828",
+        "address": "15615 Caravelle Avenue, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-19T00:15:55.607940",
+            "quote_amount": 1040.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 26,
+                "price_per_panel": "40"
+            },
+            "follow_up_date": "2025-10-17T00:15:55.607940"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-19T00:15:55.608148",
+    "discord_channel_id": 1395922067404361848
+}

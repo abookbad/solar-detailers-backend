@@ -1,0 +1,32 @@
+{
+    "client_id": "f2AFgUqegXMiaqJgg90C",
+    "personal_info": {
+        "first_name": "Aaron",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+19095199018",
+        "address": "14728 Alabama Court, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-21T23:05:08.880527",
+            "quote_amount": 1000.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 25,
+                "price_per_panel": "40"
+            },
+            "follow_up_date": "2025-10-19T23:05:08.880527"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-21T23:05:08.880585",
+    "discord_channel_id": 1396991418865815613
+}

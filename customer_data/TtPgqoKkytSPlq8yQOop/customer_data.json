@@ -1,0 +1,32 @@
+{
+    "client_id": "TtPgqoKkytSPlq8yQOop",
+    "personal_info": {
+        "first_name": "Marco",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+15626677560",
+        "address": "7361 bluebell lane, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-20T18:46:32.742311",
+            "quote_amount": 600.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 30,
+                "price_per_panel": "20"
+            },
+            "follow_up_date": "2025-10-18T18:46:32.742311"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-20T18:46:32.742365",
+    "discord_channel_id": 1396563951377977495
+}

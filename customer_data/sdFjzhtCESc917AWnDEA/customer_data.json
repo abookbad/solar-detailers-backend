@@ -1,0 +1,32 @@
+{
+    "client_id": "sdFjzhtCESc917AWnDEA",
+    "personal_info": {
+        "first_name": "Ken",
+        "last_name": "H",
+        "email": "",
+        "phone_number": "+19099574712",
+        "address": "15461 Gatwick Avenue, Fontana"
+    },
+    "service_history": [
+        {
+            "service_date": "2025-07-19T01:08:37.885007",
+            "quote_amount": 468.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 26,
+                "price_per_panel": "18"
+            },
+            "follow_up_date": "2025-10-17T01:08:37.885007"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-19T01:08:37.885048",
+    "discord_channel_id": 1395935330661568665
+}
