@@ -235,7 +235,7 @@
     },
     {
         "contact_id": "F9xTEXEHwBG5peqy2owO",
-        "amount": 500.0,
+        "amount": 400.0,
         "channel_id": 1393307726951612447,
         "date": "2025-07-19T22:41:36.558857"
     },
@@ -244,18 +244,6 @@
         "amount": 400.0,
         "channel_id": 1395935330661568665,
         "date": "2025-07-19T23:40:47.544935"
-    },
-    {
-        "contact_id": "F9xTEXEHwBG5peqy2owO",
-        "amount": -100.0,
-        "channel_id": 1393307726951612447,
-        "date": "2025-07-20T00:30:53.090839"
-    },
-    {
-        "contact_id": "F9xTEXEHwBG5peqy2owO",
-        "amount": -100.0,
-        "channel_id": 1393307726951612447,
-        "date": "2025-07-20T00:31:45.536710"
     },
     {
         "contact_id": "SepQmWewrTAWXRXkHkVS",
