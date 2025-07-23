@@ -1,0 +1,33 @@
+{
+    "client_id": "nQEJgd7LeYNUdnAhOoLj",
+    "personal_info": {
+        "first_name": "Mustafa",
+        "last_name": "t",
+        "email": "",
+        "phone_number": "+19553270561",
+        "address": "1317 W Ralston St, Ontario"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-23T00:09:07.520387",
+            "quote_amount": 275.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 5,
+                "price_per_panel": "55"
+            },
+            "follow_up_date": "2025-10-21T00:09:07.520387"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-23T00:09:07.520570",
+    "discord_channel_id": 1397369906910990486
+}

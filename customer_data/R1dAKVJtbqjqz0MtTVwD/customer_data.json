@@ -1,0 +1,33 @@
+{
+    "client_id": "R1dAKVJtbqjqz0MtTVwD",
+    "personal_info": {
+        "first_name": "Alex",
+        "last_name": "L",
+        "email": "",
+        "phone_number": "+19096442777",
+        "address": "2285 N Campus Ave, Upland"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-23T02:16:43.997497",
+            "quote_amount": 1100.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 55,
+                "price_per_panel": "20"
+            },
+            "follow_up_date": "2025-10-21T02:16:43.997497"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-23T02:16:43.997552",
+    "discord_channel_id": 1397402020461285436
+}
