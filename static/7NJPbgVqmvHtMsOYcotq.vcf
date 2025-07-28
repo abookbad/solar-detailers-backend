@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+ADR;TYPE=HOME:;;11 Cascada\, Rancho Santa Magarita;;;;
+FN:test Test
+N:Test;test;;;
+NOTE:Services:\n- Pigeon Meshing\n# of Panels: 11\n$ Quoted: $0.00
+ORG:Solar Detail
+TEL;TYPE=CELL:+19494807786
+END:VCARD

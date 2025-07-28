@@ -1,0 +1,33 @@
+{
+    "client_id": "xj7VPkbgpfuWs7ZDOd0J",
+    "personal_info": {
+        "first_name": "Ken ",
+        "last_name": "Aril",
+        "email": "",
+        "phone_number": "+16262900016",
+        "address": "6965 Grison Street, Chino"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-24T01:28:56.135282",
+            "quote_amount": 270.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 15,
+                "price_per_panel": "18"
+            },
+            "follow_up_date": "2025-10-22T01:28:56.135282"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-24T01:28:56.135470",
+    "discord_channel_id": 1397752380279492771
+}

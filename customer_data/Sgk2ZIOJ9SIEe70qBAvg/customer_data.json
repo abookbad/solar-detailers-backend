@@ -1,0 +1,33 @@
+{
+    "client_id": "Sgk2ZIOJ9SIEe70qBAvg",
+    "personal_info": {
+        "first_name": "Artin ",
+        "last_name": "A",
+        "email": "",
+        "phone_number": "+19097237778",
+        "address": "11215 Carrillo, Montclair"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-24T22:37:25.772810",
+            "quote_amount": 1125.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 25,
+                "price_per_panel": "45"
+            },
+            "follow_up_date": "2025-10-22T22:37:25.772810"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-24T22:37:25.772847",
+    "discord_channel_id": 1398071606982611144
+}

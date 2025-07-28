@@ -1,0 +1,33 @@
+{
+    "client_id": "NE7J3IsxodXjMXJAqWGB",
+    "personal_info": {
+        "first_name": "John",
+        "last_name": "B",
+        "email": "",
+        "phone_number": "+19097176522",
+        "address": "13926 San Antonio Ave, Chino"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-24T02:46:48.742313",
+            "quote_amount": 450.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 25,
+                "price_per_panel": "18"
+            },
+            "follow_up_date": "2025-10-22T02:46:48.742313"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-24T02:46:48.742352",
+    "discord_channel_id": 1397771978072391721
+}
