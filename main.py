@@ -743,7 +743,7 @@ def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: 
         logger.error(f"Failed to update GHL contact {contact_id}. Error: {e}, Details: {error_details}")
         return False
 
-def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> tuple[str | None, bool]:
+def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str, total_amount: float = 0.0) -> tuple[str | None, bool]:
     """
     Creates a contact in GHL.
     Returns a tuple of (contact_id, is_new).
@@ -766,7 +766,13 @@ def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str
         "lastName": last_name,
         "phone": formatted_phone,
         "address1": address,
-        "city": city
+        "city": city,
+        "customFields": [
+            {
+                "id": "contact.quoted_amount",
+                "value": total_amount
+            }
+        ]
     }
     
     try:
@@ -1555,7 +1561,8 @@ async def create_customer(payload: VercelWebhookPayload):
                 last_name=last_name_to_use,
                 phone=cleaned_phone,
                 address=form_data.streetAddress,
-                city=form_data.city
+                city=form_data.city,
+                total_amount=float(form_data.totalAmount) if form_data.totalAmount else 0.0
             )
 
             if not contact_id:
