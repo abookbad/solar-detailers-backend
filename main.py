@@ -578,6 +578,45 @@ async def archive(interaction: discord.Interaction):
         
     await archive_channel(interaction, contact_id)
 
+@tree.command(name="dead", description="Marks the client as a dead lead in GoHighLevel.")
+async def dead(interaction: discord.Interaction):
+    """Sends a webhook to GHL to mark the contact as a dead lead."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    contact_id = _get_contact_id_from_channel(interaction.channel.id)
+    if not contact_id:
+        await interaction.followup.send(
+            "❌ This command can only be used in a client's dedicated channel.",
+            ephemeral=True
+        )
+        return
+
+    webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/819b8e08-5985-444c-8eed-254f35cce3d5"
+    payload = {"contact_id": contact_id}
+
+    try:
+        logger.info(f"Sending dead lead webhook for contact {contact_id}")
+        response = requests.post(webhook_url, json=payload)
+        response.raise_for_status()
+        
+        logger.info(f"Successfully sent dead lead webhook for {contact_id}. Status: {response.status_code}")
+        
+        await interaction.followup.send(
+            f"✅ Successfully marked client `{contact_id}` as a dead lead in GHL.",
+            ephemeral=True
+        )
+        await interaction.channel.send(
+            f"☠️ **Lead Status Updated:** This client has been marked as a dead lead by {interaction.user.mention}."
+        )
+
+    except requests.exceptions.RequestException as e:
+        error_message = f"Failed to send dead lead webhook for {contact_id}. Error: {e}"
+        logger.error(error_message)
+        await interaction.followup.send(
+            f"❌ An error occurred while contacting the webhook: {e}",
+            ephemeral=True
+        )
+
 @tree.command(name="before", description="Initiates the process for uploading 'before' service pictures.")
 async def before(interaction: discord.Interaction):
     """Asks the user to upload 'before' pictures for the client of the current channel."""
@@ -1624,7 +1663,8 @@ async def create_customer(payload: VercelWebhookPayload):
             quote_webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/7e3b0c72-5b3a-4606-be70-da0a9ba0f655"
             quote_payload = {
                 "contact_id": contact_id,
-                "quoted_amount": quote_amount
+                "quoted_amount": quote_amount,
+                "panel_count": form_data.panelCount or 0,
             }
             try:
                 logger.info(f"Sending quote details to webhook for contact {contact_id}")
