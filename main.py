@@ -21,7 +21,6 @@ import traceback
 import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from typing import Optional, List, Dict, Any
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -708,24 +707,7 @@ def format_phone_for_display(phone: str) -> str:
     return phone
 
 # --- Helper Functions ---
-def get_ghl_contact_by_id(contact_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieves a single contact from GHL by their ID."""
-    headers = {
-        "Authorization": f"Bearer {GHL_API_TOKEN}",
-        "Version": "2021-07-28",
-        "Accept": "application/json",
-    }
-    url = f"{GHL_API_BASE_URL}/contacts/{contact_id}"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        contact_data = response.json().get("contact", {})
-        return contact_data
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to retrieve GHL contact {contact_id}. Error: {e}")
-        return None
-
-def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: str, address: str, city: str, total_amount: float = 0.0) -> bool:
+def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: str, address: str, city: str) -> bool:
     """Updates an existing contact in GHL using their contact ID."""
     
     headers = {
@@ -741,13 +723,7 @@ def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: 
         "phone": phone,
         "address1": address,
         "city": city,
-        "source": "public api",
-        "customFields": [
-            {
-                "id": "contact.quoted_amount",
-                "value": total_amount
-            }
-        ]
+        "source": "public api"
     }
     
     update_url = f"{GHL_API_BASE_URL}/contacts/{contact_id}"
@@ -767,7 +743,7 @@ def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: 
         logger.error(f"Failed to update GHL contact {contact_id}. Error: {e}, Details: {error_details}")
         return False
 
-def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str, total_amount: float = 0.0) -> tuple[str | None, bool]:
+def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str, city: str) -> tuple[str | None, bool]:
     """
     Creates a contact in GHL.
     Returns a tuple of (contact_id, is_new).
@@ -790,13 +766,7 @@ def create_ghl_contact(first_name: str, last_name: str, phone: str, address: str
         "lastName": last_name,
         "phone": formatted_phone,
         "address1": address,
-        "city": city,
-        "customFields": [
-            {
-                "id": "contact.quoted_amount",
-                "value": total_amount
-            }
-        ]
+        "city": city
     }
     
     try:
@@ -1585,8 +1555,7 @@ async def create_customer(payload: VercelWebhookPayload):
                 last_name=last_name_to_use,
                 phone=cleaned_phone,
                 address=form_data.streetAddress,
-                city=form_data.city,
-                total_amount=float(form_data.totalAmount) if form_data.totalAmount else 0.0
+                city=form_data.city
             )
 
             if not contact_id:
@@ -1604,8 +1573,7 @@ async def create_customer(payload: VercelWebhookPayload):
                     last_name=last_name_to_use,
                     phone=cleaned_phone,
                     address=form_data.streetAddress,
-                    city=form_data.city,
-                    total_amount=float(form_data.totalAmount) if form_data.totalAmount else 0.0
+                    city=form_data.city
                 )
                 if not update_success:
                     logger.warning(f"Failed to update contact {contact_id} in GHL, but proceeding with local creation anyway.")
@@ -1650,6 +1618,22 @@ async def create_customer(payload: VercelWebhookPayload):
                     quote_amount = float(cleaned_amount)
             except (ValueError, TypeError):
                 quote_amount = 0.0
+
+        # --- New webhook call to update quote amount ---
+        if contact_id:
+            quote_webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/7e3b0c72-5b3a-4606-be70-da0a9ba0f655"
+            quote_payload = {
+                "contact_id": contact_id,
+                "quoted_amount": quote_amount
+            }
+            try:
+                logger.info(f"Sending quote details to webhook for contact {contact_id}")
+                response = requests.post(quote_webhook_url, json=quote_payload)
+                response.raise_for_status()
+                logger.info(f"Successfully sent quote details for contact {contact_id}. Status: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                # Log the error but don't stop the process
+                logger.error(f"Failed to send quote details for contact {contact_id}. Error: {e}")
 
         customer_data = {
             "client_id": contact_id,  # GHL Contact ID is the main ID
