@@ -21,6 +21,7 @@ import traceback
 import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from typing import Optional, List, Dict, Any
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -707,7 +708,24 @@ def format_phone_for_display(phone: str) -> str:
     return phone
 
 # --- Helper Functions ---
-def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: str, address: str, city: str) -> bool:
+def get_ghl_contact_by_id(contact_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieves a single contact from GHL by their ID."""
+    headers = {
+        "Authorization": f"Bearer {GHL_API_TOKEN}",
+        "Version": "2021-07-28",
+        "Accept": "application/json",
+    }
+    url = f"{GHL_API_BASE_URL}/contacts/{contact_id}"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        contact_data = response.json().get("contact", {})
+        return contact_data
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to retrieve GHL contact {contact_id}. Error: {e}")
+        return None
+
+def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: str, address: str, city: str, total_amount: float = 0.0) -> bool:
     """Updates an existing contact in GHL using their contact ID."""
     
     headers = {
@@ -723,7 +741,13 @@ def update_ghl_contact(contact_id: str, first_name: str, last_name: str, phone: 
         "phone": phone,
         "address1": address,
         "city": city,
-        "source": "public api"
+        "source": "public api",
+        "customFields": [
+            {
+                "id": "contact.quoted_amount",
+                "value": total_amount
+            }
+        ]
     }
     
     update_url = f"{GHL_API_BASE_URL}/contacts/{contact_id}"
@@ -1580,7 +1604,8 @@ async def create_customer(payload: VercelWebhookPayload):
                     last_name=last_name_to_use,
                     phone=cleaned_phone,
                     address=form_data.streetAddress,
-                    city=form_data.city
+                    city=form_data.city,
+                    total_amount=float(form_data.totalAmount) if form_data.totalAmount else 0.0
                 )
                 if not update_success:
                     logger.warning(f"Failed to update contact {contact_id} in GHL, but proceeding with local creation anyway.")
