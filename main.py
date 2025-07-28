@@ -609,6 +609,9 @@ async def dead(interaction: discord.Interaction):
             f"☠️ **Lead Status Updated:** This client has been marked as a dead lead by {interaction.user.mention}."
         )
 
+        # Automatically archive the channel after marking as dead
+        await archive_channel(interaction, contact_id)
+
     except requests.exceptions.RequestException as e:
         error_message = f"Failed to send dead lead webhook for {contact_id}. Error: {e}"
         logger.error(error_message)
