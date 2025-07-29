@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+ADR;TYPE=HOME:;;2102 BUSINESS CENTER DR\, IRVINE;;;;
+FN:test test
+N:test;test;;;
+NOTE:Services:\n# of Panels: 22\n$ Quoted: $484.00
+ORG:Solar Detail
+TEL;TYPE=CELL:+19093244297
+END:VCARD

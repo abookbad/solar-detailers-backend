@@ -1,0 +1,33 @@
+{
+    "client_id": "HsUiy8cUy5qm6xOOU8vF",
+    "personal_info": {
+        "first_name": "Cris",
+        "last_name": "Stewart ",
+        "email": "",
+        "phone_number": "+19092618330",
+        "address": "7440 Olympia Avenue, Fontana"
+    },
+    "source": "Unknown",
+    "service_history": [
+        {
+            "service_date": "2025-07-28T23:29:34.319424",
+            "quote_amount": 540.0,
+            "service_details": {
+                "solar_cleaning": false,
+                "pigeon_meshing": false,
+                "panel_count": 12,
+                "price_per_panel": "45"
+            },
+            "follow_up_date": "2025-10-26T23:29:34.319424"
+        }
+    ],
+    "membership_info": {
+        "quoted_price": 0.0,
+        "plan_basis_months": 0,
+        "invite_sent_date": "",
+        "status": "not_invited"
+    },
+    "stripe_customer_id": "",
+    "created_at": "2025-07-28T23:29:35.034673",
+    "discord_channel_id": 1399534283328327720
+}
