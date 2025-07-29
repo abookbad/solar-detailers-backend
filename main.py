@@ -149,19 +149,6 @@ async def on_message(message: discord.Message):
                 service_apt_num = downloaded_files[0]['service_appointment']
                 success, result_msg = await send_gallery_link_to_client(contact_id, service_apt_num)
 
-                # --- New Webhook Call for Service Completion ---
-                service_done_webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/67e86b2f-a4b4-4e33-b38a-521a95fe73ad"
-                webhook_payload = {"contactId": contact_id}
-                try:
-                    logger.info(f"Sending service completion webhook for contact {contact_id}")
-                    webhook_response = requests.post(service_done_webhook_url, json=webhook_payload)
-                    webhook_response.raise_for_status()
-                    logger.info(f"Successfully sent service completion webhook for {contact_id}")
-                except requests.exceptions.RequestException as e:
-                    logger.error(f"Failed to send service completion webhook for {contact_id}. Error: {e}")
-                    # Log the error but don't stop the flow; notify in channel
-                    await message.channel.send(f"⚠️ Could not send service completion update to GHL. Error: {e}")
-
                 response_message = f"✅ Successfully saved {len(downloaded_files)} 'after' image(s) for `{contact_id}`.\n"
                 if success:
                     response_message += f"✉️ Gallery link sent to client. View it here: {result_msg}"
@@ -555,6 +542,18 @@ async def paid(interaction: discord.Interaction, amount: float):
         logger.error(f"Failed to write to payments.json: {e}")
         await interaction.followup.send("❌ An error occurred while saving the payment record.", ephemeral=True)
         return
+
+    # --- GHL Paid Webhook ---
+    try:
+        paid_webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/67e86b2f-a4b4-4e33-b38a-521a95fe73ad"
+        payload = {"contact_id": contact_id, "paid_amount": amount}
+        logger.info(f"Sending 'paid' webhook for contact {contact_id} with amount {amount}")
+        response = requests.post(paid_webhook_url, json=payload)
+        response.raise_for_status()
+        logger.info(f"Successfully sent 'paid' webhook for {contact_id}. Status: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to send 'paid' webhook for {contact_id}. Error: {e}")
+        await interaction.channel.send(f"⚠️ **GHL Sync Failed:** Could not update GHL with the payment of ${amount:,.2f}.")
 
     # --- Calculate and display stats ---
     stats = get_dashboard_stats()
