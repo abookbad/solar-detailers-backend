@@ -1508,10 +1508,12 @@ async def create_customer_channel_and_post(customer_data: dict):
             logger.error(f"Discord category '{DISCORD_CATEGORY_NAME}' not found.")
             return
 
-        # Format channel name: #mm-dd-firstname
-        first_name = customer_data["personal_info"].get("first_name", "new-client").lower()
-        today = datetime.now().strftime("%m-%d")
-        channel_name = f"{today}-{first_name}"
+        # Format channel name: name-city
+        p_info = customer_data["personal_info"]
+        first_name = p_info.get("first_name", "new").lower()
+        last_name = p_info.get("last_name", "client").lower()
+        city = p_info.get("city", "city").lower().replace(" ", "-")
+        channel_name = f"{first_name}-{last_name}-{city}"
 
         # Create the new channel
         logger.info(f"Creating Discord channel: {channel_name}")
@@ -1713,6 +1715,7 @@ async def create_customer(payload: VercelWebhookPayload):
                 "email": "",
                 "phone_number": cleaned_phone,
                 "address": full_address,
+                "city": form_data.city,
             },
             "source": form_data.source or "Unknown",
             "service_history": [
