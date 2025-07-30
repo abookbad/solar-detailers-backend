@@ -603,8 +603,23 @@ async def dead(interaction: discord.Interaction):
         )
         return
 
+    # --- Fetch notes from the channel ---
+    # Scans the last 100 messages in the channel to find notes from the command issuer.
+    notes = []
+    async for message in interaction.channel.history(limit=100):
+        # A "note" is a message sent by the user who ran the /dead command that is not another command.
+        if message.author == interaction.user and not message.content.startswith('/'):
+            notes.append(message.content)
+
+    # Reverse the list to get notes in chronological order and join them.
+    notes.reverse()
+    notes_content = "\\n---\\n".join(notes)
+
     webhook_url = "https://services.leadconnectorhq.com/hooks/cWEwz6JBFHPY0LeC3ry3/webhook-trigger/819b8e08-5985-444c-8eed-254f35cce3d5"
-    payload = {"contact_id": contact_id}
+    payload = {
+        "contact_id": contact_id,
+        "notes": notes_content
+    }
 
     try:
         logger.info(f"Sending dead lead webhook for contact {contact_id}")
