@@ -609,7 +609,7 @@ async def dead(interaction: discord.Interaction):
     async for message in interaction.channel.history(limit=100):
         # A "note" is a message sent by the user who ran the /dead command that is not another command.
         if message.author == interaction.user and not message.content.startswith('/'):
-            notes.append(message.content)
+            notes.append(message.clean_content)
 
     # Reverse the list to get notes in chronological order and join them.
     notes.reverse()
